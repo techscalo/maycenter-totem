@@ -14,7 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      arrivals: {
+        Row: {
+          cobertura: string | null
+          created_at: string
+          dni: string
+          estado: string
+          id: string
+          nombre_apellido: string | null
+          tipo_atencion: string
+          tipo_llegada: string
+          tipo_paciente: string
+        }
+        Insert: {
+          cobertura?: string | null
+          created_at?: string
+          dni: string
+          estado?: string
+          id?: string
+          nombre_apellido?: string | null
+          tipo_atencion: string
+          tipo_llegada: string
+          tipo_paciente: string
+        }
+        Update: {
+          cobertura?: string | null
+          created_at?: string
+          dni?: string
+          estado?: string
+          id?: string
+          nombre_apellido?: string | null
+          tipo_atencion?: string
+          tipo_llegada?: string
+          tipo_paciente?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
