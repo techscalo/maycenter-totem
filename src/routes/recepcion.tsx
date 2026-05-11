@@ -43,6 +43,7 @@ function todayStartIso() {
 function RecepcionPage() {
   const [items, setItems] = useState<Arrival[]>([]);
   const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [ocultarAtendidos, setOcultarAtendidos] = useState(true);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -71,9 +72,10 @@ function RecepcionPage() {
       if (filtro === "urgencia") return a.tipo_llegada === "URGENCIA / SIN TURNO";
       if (filtro === "pendientes") return a.estado === "Pendiente";
       if (filtro === "atendidos") return a.estado === "Atendido";
+      if (filtro === "todos" && ocultarAtendidos) return a.estado !== "Atendido";
       return true;
     });
-  }, [items, filtro]);
+  }, [items, filtro, ocultarAtendidos]);
 
   const counts = useMemo(() => ({
     total: items.length,
@@ -141,6 +143,17 @@ function RecepcionPage() {
               {label}
             </button>
           ))}
+          {filtro === "todos" && (
+            <label className="ml-auto flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium border border-border bg-card cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={ocultarAtendidos}
+                onChange={(e) => setOcultarAtendidos(e.target.checked)}
+                className="h-4 w-4 accent-primary"
+              />
+              Ocultar atendidos
+            </label>
+          )}
         </div>
 
         {/* List */}
