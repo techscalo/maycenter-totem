@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, CalendarCheck2, Siren, UserRound, Sparkles, CreditCard, Wallet, HelpCircle } from "lucide-react";
 import logo from "@/assets/maycenter-logo.png";
 
 export const Route = createFileRoute("/")({
@@ -104,12 +104,12 @@ function KioskPage() {
       >
         <div className="grid gap-5">
           <BigOptionButton
-            emoji="🗓️"
+            icon={<CalendarCheck2 className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />}
             label="Tengo turno"
             onClick={() => { setTipoLlegada("TURNO PROGRAMADO"); setStep("tipo_paciente"); }}
           />
           <BigOptionButton
-            emoji="🚨"
+            icon={<Siren className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />}
             label="No tengo turno / Urgencia"
             variant="danger"
             onClick={() => { setTipoLlegada("URGENCIA / SIN TURNO"); setStep("tipo_paciente"); }}
@@ -130,11 +130,11 @@ function KioskPage() {
       >
         <div className="grid gap-5">
           <BigOptionButton
-            emoji="👤" label="Ya soy paciente"
+            icon={<UserRound className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />} label="Ya soy paciente"
             onClick={() => { setTipoPaciente("Paciente existente"); setStep("tipo_atencion"); }}
           />
           <BigOptionButton
-            emoji="✨" label="Es mi primera atención"
+            icon={<Sparkles className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />} label="Es mi primera atención"
             onClick={() => { setTipoPaciente("Primera atención"); setStep("tipo_atencion"); }}
           />
         </div>
@@ -153,11 +153,11 @@ function KioskPage() {
       >
         <div className="grid gap-5">
           <BigOptionButton
-            emoji="💳" label="Obra social"
+            icon={<CreditCard className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />} label="Obra social"
             onClick={() => { setTipoAtencion("Obra social"); setStep("cobertura"); }}
           />
           <BigOptionButton
-            emoji="💵" label="Particular"
+            icon={<Wallet className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />} label="Particular"
             onClick={() => { setTipoAtencion("Particular"); setCobertura(""); setStep("datos"); }}
           />
         </div>
@@ -187,9 +187,9 @@ function KioskPage() {
           ))}
           <button
             onClick={() => { setCobertura("Otra obra social"); setStep("datos"); }}
-            className="rounded-2xl border-2 border-dashed border-primary/40 bg-primary/5 p-6 text-xl font-semibold text-primary hover:bg-primary/10 active:scale-95 transition-all col-span-2 md:col-span-3"
+            className="rounded-2xl border-2 border-dashed border-primary/40 bg-primary/5 p-6 text-xl font-semibold text-primary hover:bg-primary/10 active:scale-95 transition-all col-span-2 md:col-span-3 inline-flex items-center justify-center gap-3"
           >
-            ❓ Otra obra social
+            <HelpCircle className="h-6 w-6" /> Otra obra social
           </button>
         </div>
       </KioskShell>
