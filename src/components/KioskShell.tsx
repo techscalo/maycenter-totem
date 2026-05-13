@@ -97,12 +97,12 @@ export function KioskShell({ step, totalSteps, title, subtitle, onBack, onCancel
 }
 
 export function BigOptionButton({
-  emoji,
+  icon,
   label,
   onClick,
   variant = "default",
 }: {
-  emoji?: string;
+  icon?: ReactNode;
   label: string;
   onClick: () => void;
   variant?: "default" | "danger";
@@ -118,15 +118,15 @@ export function BigOptionButton({
       style={{ boxShadow: "var(--shadow-card)" }}
     >
       <div className="flex items-center gap-6">
-        {emoji && (
+        {icon && (
           <div
-            className={`text-5xl md:text-6xl shrink-0 grid place-items-center h-20 w-20 md:h-24 md:w-24 rounded-2xl ${
+            className={`shrink-0 grid place-items-center h-20 w-20 md:h-24 md:w-24 rounded-2xl ${
               variant === "danger"
-                ? "bg-destructive/10"
-                : "bg-primary/10 group-hover:bg-primary/15"
+                ? "bg-destructive/10 text-destructive"
+                : "bg-primary/10 text-primary group-hover:bg-primary/15"
             }`}
           >
-            {emoji}
+            {icon}
           </div>
         )}
         <div className="flex-1">
