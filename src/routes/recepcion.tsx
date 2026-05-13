@@ -33,6 +33,7 @@ type Arrival = {
 
 const ESTADOS = ["Pendiente", "Atendido", "Cancelado"] as const;
 type Filtro = "todos" | "turno" | "urgencia" | "pendientes" | "atendidos";
+type Rango = "hoy" | "ayer" | "7d" | "30d" | "todos" | "custom";
 
 function todayStartIso() {
   const d = new Date();
@@ -40,19 +41,63 @@ function todayStartIso() {
   return d.toISOString();
 }
 
+function startOfDay(date: Date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+function endOfDay(date: Date) {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+function toDateInput(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function getRange(rango: Rango, desde: string, hasta: string): { from?: Date; to?: Date } {
+  const now = new Date();
+  if (rango === "hoy") return { from: startOfDay(now), to: endOfDay(now) };
+  if (rango === "ayer") {
+    const y = new Date(now); y.setDate(y.getDate() - 1);
+    return { from: startOfDay(y), to: endOfDay(y) };
+  }
+  if (rango === "7d") {
+    const f = new Date(now); f.setDate(f.getDate() - 6);
+    return { from: startOfDay(f), to: endOfDay(now) };
+  }
+  if (rango === "30d") {
+    const f = new Date(now); f.setDate(f.getDate() - 29);
+    return { from: startOfDay(f), to: endOfDay(now) };
+  }
+  if (rango === "custom") {
+    return {
+      from: desde ? startOfDay(new Date(desde)) : undefined,
+      to: hasta ? endOfDay(new Date(hasta)) : undefined,
+    };
+  }
+  return {};
+}
+
 function RecepcionPage() {
   const [items, setItems] = useState<Arrival[]>([]);
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [ocultarAtendidos, setOcultarAtendidos] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [rango, setRango] = useState<Rango>("hoy");
+  const [desde, setDesde] = useState<string>(toDateInput(new Date()));
+  const [hasta, setHasta] = useState<string>(toDateInput(new Date()));
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("arrivals")
-      .select("*")
-      .gte("created_at", todayStartIso())
-      .order("created_at", { ascending: false });
+    const { from, to } = getRange(rango, desde, hasta);
+    let q = supabase.from("arrivals").select("*").order("created_at", { ascending: false });
+    if (from) q = q.gte("created_at", from.toISOString());
+    if (to) q = q.lte("created_at", to.toISOString());
+    if (rango === "todos") q = q.limit(500);
+    const { data } = await q;
     setItems((data as Arrival[]) ?? []);
     setLoading(false);
   };
@@ -64,7 +109,8 @@ function RecepcionPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "arrivals" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rango, desde, hasta]);
 
   const filtered = useMemo(() => {
     return items.filter((a) => {
@@ -110,9 +156,59 @@ function RecepcionPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Date range */}
+        <div className="mb-6 rounded-2xl border border-border bg-card p-4 flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-muted-foreground mr-2 inline-flex items-center gap-2">
+            <Calendar className="h-4 w-4" /> Período
+          </span>
+          {([
+            ["hoy", "Hoy"],
+            ["ayer", "Ayer"],
+            ["7d", "Últimos 7 días"],
+            ["30d", "Últimos 30 días"],
+            ["todos", "Históricos"],
+            ["custom", "Personalizado"],
+          ] as [Rango, string][]).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setRango(key)}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                rango === key
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background text-foreground border-border hover:bg-accent"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+          {rango === "custom" && (
+            <div className="flex items-center gap-2 ml-2">
+              <input
+                type="date"
+                value={desde}
+                max={hasta || undefined}
+                onChange={(e) => setDesde(e.target.value)}
+                className="h-9 px-3 rounded-md border border-border bg-background text-sm"
+              />
+              <span className="text-muted-foreground text-sm">a</span>
+              <input
+                type="date"
+                value={hasta}
+                min={desde || undefined}
+                onChange={(e) => setHasta(e.target.value)}
+                className="h-9 px-3 rounded-md border border-border bg-background text-sm"
+              />
+            </div>
+          )}
+        </div>
+
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <StatCard label="Llegadas hoy" value={counts.total} icon={<Calendar className="h-5 w-5" />} />
+          <StatCard
+            label={rango === "hoy" ? "Llegadas hoy" : "Llegadas en el período"}
+            value={counts.total}
+            icon={<Calendar className="h-5 w-5" />}
+          />
           <StatCard label="Pendientes" value={counts.pendientes} icon={<Clock className="h-5 w-5" />} accent />
           <StatCard
             label="Urgencias pendientes"
