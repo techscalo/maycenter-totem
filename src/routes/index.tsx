@@ -198,10 +198,9 @@ function KioskPage() {
 
   // ---------- STEP 5 ----------
   if (step === "datos") {
-    const isFirstTime = tipoPaciente === "Primera atención";
     const onSubmit = async () => {
       const e: typeof errors = {};
-      if (isFirstTime && !nombre.trim()) e.nombre = "Ingresá tu nombre y apellido.";
+      if (!nombre.trim()) e.nombre = "Ingresá tu nombre y apellido.";
       const dniClean = dni.replace(/\D/g, "");
       if (!dniClean) e.dni = "El DNI es obligatorio.";
       else if (dniClean.length < 6) e.dni = "El DNI parece muy corto.";
@@ -214,7 +213,7 @@ function KioskPage() {
         tipo_paciente: tipoPaciente,
         tipo_atencion: tipoAtencion,
         cobertura: tipoAtencion === "Obra social" ? cobertura : "Particular",
-        nombre_apellido: isFirstTime ? nombre.trim() : null,
+        nombre_apellido: nombre.trim(),
         dni: dniClean,
         estado: "Pendiente",
       });
@@ -229,8 +228,8 @@ function KioskPage() {
     return (
       <KioskShell
         step={stepIndex} totalSteps={5}
-        title={isFirstTime ? "Completá tus datos" : "Ingresá tu DNI"}
-        subtitle={isFirstTime ? "Necesitamos esta información para registrarte." : "Para confirmar tu llegada."}
+        title="Completá tus datos"
+        subtitle="Necesitamos esta información para registrar tu llegada."
         onBack={() => setStep(tipoAtencion === "Obra social" ? "cobertura" : "tipo_atencion")}
         onCancel={reset}
       >
@@ -238,20 +237,18 @@ function KioskPage() {
           className="rounded-3xl bg-card p-6 md:p-10 border border-border space-y-6"
           style={{ boxShadow: "var(--shadow-card)" }}
         >
-          {isFirstTime && (
-            <div className="space-y-2">
-              <Label htmlFor="nombre" className="text-lg">Nombre y apellido</Label>
-              <Input
-                id="nombre"
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                placeholder="Ej: Juan Pérez"
-                className="h-16 text-xl"
-                autoFocus
-              />
-              {errors.nombre && <p className="text-destructive text-sm">{errors.nombre}</p>}
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label htmlFor="nombre" className="text-lg">Nombre y apellido</Label>
+            <Input
+              id="nombre"
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              placeholder="Ej: Juan Pérez"
+              className="h-16 text-xl"
+              autoFocus
+            />
+            {errors.nombre && <p className="text-destructive text-sm">{errors.nombre}</p>}
+          </div>
           <div className="space-y-2">
             <Label htmlFor="dni" className="text-lg">DNI</Label>
             <Input
@@ -261,7 +258,6 @@ function KioskPage() {
               inputMode="numeric"
               placeholder="Ej: 30123456"
               className="h-16 text-2xl tracking-widest"
-              autoFocus={!isFirstTime}
             />
             {errors.dni && <p className="text-destructive text-sm">{errors.dni}</p>}
           </div>
