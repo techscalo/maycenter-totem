@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as GestionLoginRouteImport } from './routes/gestion.login'
 import { Route as AppGestionIndexRouteImport } from './routes/_app.gestion.index'
+import { Route as AppGestionAdminRouteImport } from './routes/_app.gestion.admin'
 import { Route as AppGestionPrestacionesIndexRouteImport } from './routes/_app.gestion.prestaciones.index'
 import { Route as AppGestionPrestacionesNuevaRouteImport } from './routes/_app.gestion.prestaciones.nueva'
 
@@ -41,6 +42,11 @@ const AppGestionIndexRoute = AppGestionIndexRouteImport.update({
   path: '/gestion/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppGestionAdminRoute = AppGestionAdminRouteImport.update({
+  id: '/gestion/admin',
+  path: '/gestion/admin',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppGestionPrestacionesIndexRoute =
   AppGestionPrestacionesIndexRouteImport.update({
     id: '/gestion/prestaciones/',
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
+  '/gestion/admin': typeof AppGestionAdminRoute
   '/gestion/': typeof AppGestionIndexRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/gestion/prestaciones/': typeof AppGestionPrestacionesIndexRoute
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
+  '/gestion/admin': typeof AppGestionAdminRoute
   '/gestion': typeof AppGestionIndexRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/gestion/prestaciones': typeof AppGestionPrestacionesIndexRoute
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
+  '/_app/gestion/admin': typeof AppGestionAdminRoute
   '/_app/gestion/': typeof AppGestionIndexRoute
   '/_app/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/_app/gestion/prestaciones/': typeof AppGestionPrestacionesIndexRoute
@@ -86,6 +95,7 @@ export interface FileRouteTypes {
     | '/'
     | '/recepcion'
     | '/gestion/login'
+    | '/gestion/admin'
     | '/gestion/'
     | '/gestion/prestaciones/nueva'
     | '/gestion/prestaciones/'
@@ -94,6 +104,7 @@ export interface FileRouteTypes {
     | '/'
     | '/recepcion'
     | '/gestion/login'
+    | '/gestion/admin'
     | '/gestion'
     | '/gestion/prestaciones/nueva'
     | '/gestion/prestaciones'
@@ -103,6 +114,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/recepcion'
     | '/gestion/login'
+    | '/_app/gestion/admin'
     | '/_app/gestion/'
     | '/_app/gestion/prestaciones/nueva'
     | '/_app/gestion/prestaciones/'
@@ -152,6 +164,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGestionIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/gestion/admin': {
+      id: '/_app/gestion/admin'
+      path: '/gestion/admin'
+      fullPath: '/gestion/admin'
+      preLoaderRoute: typeof AppGestionAdminRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/gestion/prestaciones/': {
       id: '/_app/gestion/prestaciones/'
       path: '/gestion/prestaciones'
@@ -170,12 +189,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppGestionAdminRoute: typeof AppGestionAdminRoute
   AppGestionIndexRoute: typeof AppGestionIndexRoute
   AppGestionPrestacionesNuevaRoute: typeof AppGestionPrestacionesNuevaRoute
   AppGestionPrestacionesIndexRoute: typeof AppGestionPrestacionesIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppGestionAdminRoute: AppGestionAdminRoute,
   AppGestionIndexRoute: AppGestionIndexRoute,
   AppGestionPrestacionesNuevaRoute: AppGestionPrestacionesNuevaRoute,
   AppGestionPrestacionesIndexRoute: AppGestionPrestacionesIndexRoute,
