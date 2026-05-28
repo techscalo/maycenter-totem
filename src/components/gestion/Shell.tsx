@@ -1,0 +1,98 @@
+import { ReactNode } from "react";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import {
+  LayoutDashboard,
+  ListPlus,
+  Table2,
+  Settings,
+  LogOut,
+  Building2,
+} from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useUserContext } from "@/lib/gestion/use-auth";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+
+const NAV = [
+  { to: "/gestion", label: "Inicio", icon: LayoutDashboard, exact: true },
+  { to: "/gestion/prestaciones/nueva", label: "Nueva prestación", icon: ListPlus },
+  { to: "/gestion/prestaciones", label: "Prestaciones", icon: Table2 },
+  { to: "/gestion/admin", label: "Administración", icon: Settings, adminOnly: true },
+];
+
+export function GestionShell({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
+  const path = useRouterState({ select: (s) => s.location.pathname });
+  const { profile, roles, isAdmin } = useUserContext();
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate({ to: "/gestion/login" });
+  };
+
+  return (
+    <div className="flex min-h-screen w-full bg-muted/30">
+      <aside className="hidden md:flex w-64 flex-col border-r bg-card">
+        <div className="px-5 py-5 border-b">
+          <div className="flex items-center gap-2">
+            <div className="h-9 w-9 rounded-lg bg-[var(--gradient-brand)] grid place-items-center text-primary-foreground font-bold">
+              M
+            </div>
+            <div>
+              <div className="text-sm font-semibold">Maycenter</div>
+              <div className="text-xs text-muted-foreground">Gestión clínica</div>
+            </div>
+          </div>
+        </div>
+
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          {NAV.filter((n) => !n.adminOnly || isAdmin).map((item) => {
+            const Icon = item.icon;
+            const active = item.exact ? path === item.to : path.startsWith(item.to);
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                  active
+                    ? "bg-primary text-primary-foreground"
+                    : "text-foreground hover:bg-accent",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="px-3 py-3 border-t space-y-2">
+          <div className="px-2 text-xs text-muted-foreground truncate">
+            {profile?.nombre || "Usuario"}
+          </div>
+          <div className="px-2 text-[10px] uppercase tracking-wide text-muted-foreground">
+            {roles.join(", ") || "sin rol"}
+          </div>
+          <Button variant="outline" size="sm" className="w-full" onClick={handleLogout}>
+            <LogOut className="h-4 w-4 mr-2" />
+            Salir
+          </Button>
+        </div>
+      </aside>
+
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="md:hidden border-b bg-card px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-primary" />
+            <span className="font-semibold">Maycenter</span>
+          </div>
+          <Button variant="ghost" size="sm" onClick={handleLogout}>
+            <LogOut className="h-4 w-4" />
+          </Button>
+        </header>
+        <main className="flex-1 p-4 md:p-8">{children}</main>
+      </div>
+    </div>
+  );
+}

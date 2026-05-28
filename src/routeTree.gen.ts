@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as RecepcionRouteImport } from './routes/recepcion'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as GestionLoginRouteImport } from './routes/gestion.login'
 
 const RecepcionRoute = RecepcionRouteImport.update({
   id: '/recepcion',
@@ -22,31 +23,40 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GestionLoginRoute = GestionLoginRouteImport.update({
+  id: '/gestion/login',
+  path: '/gestion/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/recepcion': typeof RecepcionRoute
+  '/gestion/login': typeof GestionLoginRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/recepcion': typeof RecepcionRoute
+  '/gestion/login': typeof GestionLoginRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/recepcion': typeof RecepcionRoute
+  '/gestion/login': typeof GestionLoginRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/recepcion'
+  fullPaths: '/' | '/recepcion' | '/gestion/login'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/recepcion'
-  id: '__root__' | '/' | '/recepcion'
+  to: '/' | '/recepcion' | '/gestion/login'
+  id: '__root__' | '/' | '/recepcion' | '/gestion/login'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   RecepcionRoute: typeof RecepcionRoute
+  GestionLoginRoute: typeof GestionLoginRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,13 +75,31 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/gestion/login': {
+      id: '/gestion/login'
+      path: '/gestion/login'
+      fullPath: '/gestion/login'
+      preLoaderRoute: typeof GestionLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   RecepcionRoute: RecepcionRoute,
+  GestionLoginRoute: GestionLoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
