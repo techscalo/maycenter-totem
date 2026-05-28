@@ -10,11 +10,21 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as RecepcionRouteImport } from './routes/recepcion'
+import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as GestionLoginRouteImport } from './routes/gestion.login'
+import { Route as AppGestionIndexRouteImport } from './routes/_app.gestion.index'
+import { Route as AppGestionAdminRouteImport } from './routes/_app.gestion.admin'
+import { Route as AppGestionPrestacionesIndexRouteImport } from './routes/_app.gestion.prestaciones.index'
+import { Route as AppGestionPrestacionesNuevaRouteImport } from './routes/_app.gestion.prestaciones.nueva'
 
 const RecepcionRoute = RecepcionRouteImport.update({
   id: '/recepcion',
   path: '/recepcion',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -22,31 +32,99 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GestionLoginRoute = GestionLoginRouteImport.update({
+  id: '/gestion/login',
+  path: '/gestion/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppGestionIndexRoute = AppGestionIndexRouteImport.update({
+  id: '/gestion/',
+  path: '/gestion/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGestionAdminRoute = AppGestionAdminRouteImport.update({
+  id: '/gestion/admin',
+  path: '/gestion/admin',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGestionPrestacionesIndexRoute =
+  AppGestionPrestacionesIndexRouteImport.update({
+    id: '/gestion/prestaciones/',
+    path: '/gestion/prestaciones/',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppGestionPrestacionesNuevaRoute =
+  AppGestionPrestacionesNuevaRouteImport.update({
+    id: '/gestion/prestaciones/nueva',
+    path: '/gestion/prestaciones/nueva',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/recepcion': typeof RecepcionRoute
+  '/gestion/login': typeof GestionLoginRoute
+  '/gestion/admin': typeof AppGestionAdminRoute
+  '/gestion/': typeof AppGestionIndexRoute
+  '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
+  '/gestion/prestaciones/': typeof AppGestionPrestacionesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/recepcion': typeof RecepcionRoute
+  '/gestion/login': typeof GestionLoginRoute
+  '/gestion/admin': typeof AppGestionAdminRoute
+  '/gestion': typeof AppGestionIndexRoute
+  '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
+  '/gestion/prestaciones': typeof AppGestionPrestacionesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
   '/recepcion': typeof RecepcionRoute
+  '/gestion/login': typeof GestionLoginRoute
+  '/_app/gestion/admin': typeof AppGestionAdminRoute
+  '/_app/gestion/': typeof AppGestionIndexRoute
+  '/_app/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
+  '/_app/gestion/prestaciones/': typeof AppGestionPrestacionesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/recepcion'
+  fullPaths:
+    | '/'
+    | '/recepcion'
+    | '/gestion/login'
+    | '/gestion/admin'
+    | '/gestion/'
+    | '/gestion/prestaciones/nueva'
+    | '/gestion/prestaciones/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/recepcion'
-  id: '__root__' | '/' | '/recepcion'
+  to:
+    | '/'
+    | '/recepcion'
+    | '/gestion/login'
+    | '/gestion/admin'
+    | '/gestion'
+    | '/gestion/prestaciones/nueva'
+    | '/gestion/prestaciones'
+  id:
+    | '__root__'
+    | '/'
+    | '/_app'
+    | '/recepcion'
+    | '/gestion/login'
+    | '/_app/gestion/admin'
+    | '/_app/gestion/'
+    | '/_app/gestion/prestaciones/nueva'
+    | '/_app/gestion/prestaciones/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
   RecepcionRoute: typeof RecepcionRoute
+  GestionLoginRoute: typeof GestionLoginRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -58,6 +136,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RecepcionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -65,23 +150,66 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/gestion/login': {
+      id: '/gestion/login'
+      path: '/gestion/login'
+      fullPath: '/gestion/login'
+      preLoaderRoute: typeof GestionLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/gestion/': {
+      id: '/_app/gestion/'
+      path: '/gestion'
+      fullPath: '/gestion/'
+      preLoaderRoute: typeof AppGestionIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/gestion/admin': {
+      id: '/_app/gestion/admin'
+      path: '/gestion/admin'
+      fullPath: '/gestion/admin'
+      preLoaderRoute: typeof AppGestionAdminRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/gestion/prestaciones/': {
+      id: '/_app/gestion/prestaciones/'
+      path: '/gestion/prestaciones'
+      fullPath: '/gestion/prestaciones/'
+      preLoaderRoute: typeof AppGestionPrestacionesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/gestion/prestaciones/nueva': {
+      id: '/_app/gestion/prestaciones/nueva'
+      path: '/gestion/prestaciones/nueva'
+      fullPath: '/gestion/prestaciones/nueva'
+      preLoaderRoute: typeof AppGestionPrestacionesNuevaRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
+interface AppRouteChildren {
+  AppGestionAdminRoute: typeof AppGestionAdminRoute
+  AppGestionIndexRoute: typeof AppGestionIndexRoute
+  AppGestionPrestacionesNuevaRoute: typeof AppGestionPrestacionesNuevaRoute
+  AppGestionPrestacionesIndexRoute: typeof AppGestionPrestacionesIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppGestionAdminRoute: AppGestionAdminRoute,
+  AppGestionIndexRoute: AppGestionIndexRoute,
+  AppGestionPrestacionesNuevaRoute: AppGestionPrestacionesNuevaRoute,
+  AppGestionPrestacionesIndexRoute: AppGestionPrestacionesIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
   RecepcionRoute: RecepcionRoute,
+  GestionLoginRoute: GestionLoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
