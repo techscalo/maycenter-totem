@@ -50,15 +50,338 @@ export type Database = {
         }
         Relationships: []
       }
+      nomencladores: {
+        Row: {
+          activo: boolean
+          codigo: string
+          created_at: string
+          descripcion: string
+          id: string
+          monto: number
+          obra_social_id: string
+        }
+        Insert: {
+          activo?: boolean
+          codigo: string
+          created_at?: string
+          descripcion: string
+          id?: string
+          monto?: number
+          obra_social_id: string
+        }
+        Update: {
+          activo?: boolean
+          codigo?: string
+          created_at?: string
+          descripcion?: string
+          id?: string
+          monto?: number
+          obra_social_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nomencladores_obra_social_id_fkey"
+            columns: ["obra_social_id"]
+            isOneToOne: false
+            referencedRelation: "obras_sociales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      obras_sociales: {
+        Row: {
+          activa: boolean
+          created_at: string
+          es_particular: boolean
+          id: string
+          nombre: string
+        }
+        Insert: {
+          activa?: boolean
+          created_at?: string
+          es_particular?: boolean
+          id?: string
+          nombre: string
+        }
+        Update: {
+          activa?: boolean
+          created_at?: string
+          es_particular?: boolean
+          id?: string
+          nombre?: string
+        }
+        Relationships: []
+      }
+      odontologos: {
+        Row: {
+          activo: boolean
+          created_at: string
+          id: string
+          nombre: string
+          numero_od: string | null
+          piso_id: string | null
+          sucursal_id: string
+          user_id: string | null
+        }
+        Insert: {
+          activo?: boolean
+          created_at?: string
+          id?: string
+          nombre: string
+          numero_od?: string | null
+          piso_id?: string | null
+          sucursal_id: string
+          user_id?: string | null
+        }
+        Update: {
+          activo?: boolean
+          created_at?: string
+          id?: string
+          nombre?: string
+          numero_od?: string | null
+          piso_id?: string | null
+          sucursal_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "odontologos_piso_id_fkey"
+            columns: ["piso_id"]
+            isOneToOne: false
+            referencedRelation: "pisos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "odontologos_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pisos: {
+        Row: {
+          created_at: string
+          id: string
+          nombre: string
+          sucursal_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nombre: string
+          sucursal_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nombre?: string
+          sucursal_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pisos_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prestaciones: {
+        Row: {
+          cantidad: number
+          codigo_manual: string | null
+          cotizacion_usd: number | null
+          created_at: string
+          created_by: string | null
+          descripcion_manual: string | null
+          dni: string
+          fecha: string
+          id: string
+          monto: number
+          monto_usd: number | null
+          nomenclador_id: string | null
+          obra_social_id: string
+          observaciones: string | null
+          odontologo_id: string
+          paciente: string
+          piso_id: string | null
+          sucursal_id: string
+          updated_at: string
+        }
+        Insert: {
+          cantidad?: number
+          codigo_manual?: string | null
+          cotizacion_usd?: number | null
+          created_at?: string
+          created_by?: string | null
+          descripcion_manual?: string | null
+          dni: string
+          fecha?: string
+          id?: string
+          monto?: number
+          monto_usd?: number | null
+          nomenclador_id?: string | null
+          obra_social_id: string
+          observaciones?: string | null
+          odontologo_id: string
+          paciente: string
+          piso_id?: string | null
+          sucursal_id: string
+          updated_at?: string
+        }
+        Update: {
+          cantidad?: number
+          codigo_manual?: string | null
+          cotizacion_usd?: number | null
+          created_at?: string
+          created_by?: string | null
+          descripcion_manual?: string | null
+          dni?: string
+          fecha?: string
+          id?: string
+          monto?: number
+          monto_usd?: number | null
+          nomenclador_id?: string | null
+          obra_social_id?: string
+          observaciones?: string | null
+          odontologo_id?: string
+          paciente?: string
+          piso_id?: string | null
+          sucursal_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prestaciones_nomenclador_id_fkey"
+            columns: ["nomenclador_id"]
+            isOneToOne: false
+            referencedRelation: "nomencladores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prestaciones_obra_social_id_fkey"
+            columns: ["obra_social_id"]
+            isOneToOne: false
+            referencedRelation: "obras_sociales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prestaciones_odontologo_id_fkey"
+            columns: ["odontologo_id"]
+            isOneToOne: false
+            referencedRelation: "odontologos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prestaciones_piso_id_fkey"
+            columns: ["piso_id"]
+            isOneToOne: false
+            referencedRelation: "pisos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prestaciones_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          id: string
+          nombre: string | null
+          sucursal_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nombre?: string | null
+          sucursal_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nombre?: string | null
+          sucursal_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sucursales: {
+        Row: {
+          created_at: string
+          id: string
+          nombre: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nombre: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nombre?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_staff: { Args: { _user_id: string }; Returns: boolean }
+      user_sucursal: { Args: { _user_id: string }; Returns: string }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "administrativo" | "direccion" | "odontologo"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -185,6 +508,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "administrativo", "direccion", "odontologo"],
+    },
   },
 } as const
