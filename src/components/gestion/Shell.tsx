@@ -7,6 +7,8 @@ import {
   Settings,
   LogOut,
   Building2,
+  BarChart3,
+  FileText,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserContext } from "@/lib/gestion/use-auth";
@@ -15,8 +17,11 @@ import { Button } from "@/components/ui/button";
 
 const NAV = [
   { to: "/gestion", label: "Inicio", icon: LayoutDashboard, exact: true },
+  { to: "/gestion/dashboard", label: "Dashboard", icon: BarChart3 },
   { to: "/gestion/prestaciones/nueva", label: "Nueva prestación", icon: ListPlus },
   { to: "/gestion/prestaciones", label: "Prestaciones", icon: Table2 },
+  { to: "/gestion/reportes/diario", label: "Reporte diario", icon: FileText },
+  { to: "/gestion/reportes/ioma", label: "Reporte IOMA", icon: FileText },
   { to: "/gestion/admin", label: "Administración", icon: Settings, adminOnly: true },
 ];
 
