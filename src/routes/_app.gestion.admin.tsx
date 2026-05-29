@@ -35,12 +35,14 @@ function AdminPage() {
           <TabsTrigger value="obras">Obras sociales</TabsTrigger>
           <TabsTrigger value="odontologos">Odontólogos</TabsTrigger>
           <TabsTrigger value="nomencladores">Nomencladores</TabsTrigger>
+          <TabsTrigger value="usuarios">Usuarios</TabsTrigger>
         </TabsList>
         <TabsContent value="sucursales"><SucursalesTab /></TabsContent>
         <TabsContent value="pisos"><PisosTab /></TabsContent>
         <TabsContent value="obras"><ObrasTab /></TabsContent>
         <TabsContent value="odontologos"><OdontologosTab /></TabsContent>
         <TabsContent value="nomencladores"><NomencladoresTab /></TabsContent>
+        <TabsContent value="usuarios"><UsuariosTab /></TabsContent>
       </Tabs>
     </div>
   );
