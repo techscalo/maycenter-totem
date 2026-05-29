@@ -17,6 +17,7 @@ import { Route as AppGestionIndexRouteImport } from './routes/_app.gestion.index
 import { Route as AppGestionDashboardRouteImport } from './routes/_app.gestion.dashboard'
 import { Route as AppGestionAdminRouteImport } from './routes/_app.gestion.admin'
 import { Route as AppGestionPrestacionesIndexRouteImport } from './routes/_app.gestion.prestaciones.index'
+import { Route as AppGestionReportesIomaRouteImport } from './routes/_app.gestion.reportes.ioma'
 import { Route as AppGestionReportesDiarioRouteImport } from './routes/_app.gestion.reportes.diario'
 import { Route as AppGestionPrestacionesNuevaRouteImport } from './routes/_app.gestion.prestaciones.nueva'
 
@@ -60,6 +61,11 @@ const AppGestionPrestacionesIndexRoute =
     path: '/gestion/prestaciones/',
     getParentRoute: () => AppRoute,
   } as any)
+const AppGestionReportesIomaRoute = AppGestionReportesIomaRouteImport.update({
+  id: '/gestion/reportes/ioma',
+  path: '/gestion/reportes/ioma',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppGestionReportesDiarioRoute =
   AppGestionReportesDiarioRouteImport.update({
     id: '/gestion/reportes/diario',
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/gestion/': typeof AppGestionIndexRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/gestion/reportes/diario': typeof AppGestionReportesDiarioRoute
+  '/gestion/reportes/ioma': typeof AppGestionReportesIomaRoute
   '/gestion/prestaciones/': typeof AppGestionPrestacionesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -93,6 +100,7 @@ export interface FileRoutesByTo {
   '/gestion': typeof AppGestionIndexRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/gestion/reportes/diario': typeof AppGestionReportesDiarioRoute
+  '/gestion/reportes/ioma': typeof AppGestionReportesIomaRoute
   '/gestion/prestaciones': typeof AppGestionPrestacionesIndexRoute
 }
 export interface FileRoutesById {
@@ -106,6 +114,7 @@ export interface FileRoutesById {
   '/_app/gestion/': typeof AppGestionIndexRoute
   '/_app/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/_app/gestion/reportes/diario': typeof AppGestionReportesDiarioRoute
+  '/_app/gestion/reportes/ioma': typeof AppGestionReportesIomaRoute
   '/_app/gestion/prestaciones/': typeof AppGestionPrestacionesIndexRoute
 }
 export interface FileRouteTypes {
@@ -119,6 +128,7 @@ export interface FileRouteTypes {
     | '/gestion/'
     | '/gestion/prestaciones/nueva'
     | '/gestion/reportes/diario'
+    | '/gestion/reportes/ioma'
     | '/gestion/prestaciones/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/gestion'
     | '/gestion/prestaciones/nueva'
     | '/gestion/reportes/diario'
+    | '/gestion/reportes/ioma'
     | '/gestion/prestaciones'
   id:
     | '__root__'
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/_app/gestion/'
     | '/_app/gestion/prestaciones/nueva'
     | '/_app/gestion/reportes/diario'
+    | '/_app/gestion/reportes/ioma'
     | '/_app/gestion/prestaciones/'
   fileRoutesById: FileRoutesById
 }
@@ -210,6 +222,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGestionPrestacionesIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/gestion/reportes/ioma': {
+      id: '/_app/gestion/reportes/ioma'
+      path: '/gestion/reportes/ioma'
+      fullPath: '/gestion/reportes/ioma'
+      preLoaderRoute: typeof AppGestionReportesIomaRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/gestion/reportes/diario': {
       id: '/_app/gestion/reportes/diario'
       path: '/gestion/reportes/diario'
@@ -233,6 +252,7 @@ interface AppRouteChildren {
   AppGestionIndexRoute: typeof AppGestionIndexRoute
   AppGestionPrestacionesNuevaRoute: typeof AppGestionPrestacionesNuevaRoute
   AppGestionReportesDiarioRoute: typeof AppGestionReportesDiarioRoute
+  AppGestionReportesIomaRoute: typeof AppGestionReportesIomaRoute
   AppGestionPrestacionesIndexRoute: typeof AppGestionPrestacionesIndexRoute
 }
 
@@ -242,6 +262,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppGestionIndexRoute: AppGestionIndexRoute,
   AppGestionPrestacionesNuevaRoute: AppGestionPrestacionesNuevaRoute,
   AppGestionReportesDiarioRoute: AppGestionReportesDiarioRoute,
+  AppGestionReportesIomaRoute: AppGestionReportesIomaRoute,
   AppGestionPrestacionesIndexRoute: AppGestionPrestacionesIndexRoute,
 }
 
