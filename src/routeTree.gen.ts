@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as GestionLoginRouteImport } from './routes/gestion.login'
 import { Route as AppGestionIndexRouteImport } from './routes/_app.gestion.index'
+import { Route as AppGestionDashboardRouteImport } from './routes/_app.gestion.dashboard'
 import { Route as AppGestionAdminRouteImport } from './routes/_app.gestion.admin'
 import { Route as AppGestionPrestacionesIndexRouteImport } from './routes/_app.gestion.prestaciones.index'
 import { Route as AppGestionPrestacionesNuevaRouteImport } from './routes/_app.gestion.prestaciones.nueva'
@@ -42,6 +43,11 @@ const AppGestionIndexRoute = AppGestionIndexRouteImport.update({
   path: '/gestion/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppGestionDashboardRoute = AppGestionDashboardRouteImport.update({
+  id: '/gestion/dashboard',
+  path: '/gestion/dashboard',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppGestionAdminRoute = AppGestionAdminRouteImport.update({
   id: '/gestion/admin',
   path: '/gestion/admin',
@@ -65,6 +71,7 @@ export interface FileRoutesByFullPath {
   '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
   '/gestion/admin': typeof AppGestionAdminRoute
+  '/gestion/dashboard': typeof AppGestionDashboardRoute
   '/gestion/': typeof AppGestionIndexRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/gestion/prestaciones/': typeof AppGestionPrestacionesIndexRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
   '/gestion/admin': typeof AppGestionAdminRoute
+  '/gestion/dashboard': typeof AppGestionDashboardRoute
   '/gestion': typeof AppGestionIndexRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/gestion/prestaciones': typeof AppGestionPrestacionesIndexRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
   '/_app/gestion/admin': typeof AppGestionAdminRoute
+  '/_app/gestion/dashboard': typeof AppGestionDashboardRoute
   '/_app/gestion/': typeof AppGestionIndexRoute
   '/_app/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/_app/gestion/prestaciones/': typeof AppGestionPrestacionesIndexRoute
@@ -96,6 +105,7 @@ export interface FileRouteTypes {
     | '/recepcion'
     | '/gestion/login'
     | '/gestion/admin'
+    | '/gestion/dashboard'
     | '/gestion/'
     | '/gestion/prestaciones/nueva'
     | '/gestion/prestaciones/'
@@ -105,6 +115,7 @@ export interface FileRouteTypes {
     | '/recepcion'
     | '/gestion/login'
     | '/gestion/admin'
+    | '/gestion/dashboard'
     | '/gestion'
     | '/gestion/prestaciones/nueva'
     | '/gestion/prestaciones'
@@ -115,6 +126,7 @@ export interface FileRouteTypes {
     | '/recepcion'
     | '/gestion/login'
     | '/_app/gestion/admin'
+    | '/_app/gestion/dashboard'
     | '/_app/gestion/'
     | '/_app/gestion/prestaciones/nueva'
     | '/_app/gestion/prestaciones/'
@@ -164,6 +176,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGestionIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/gestion/dashboard': {
+      id: '/_app/gestion/dashboard'
+      path: '/gestion/dashboard'
+      fullPath: '/gestion/dashboard'
+      preLoaderRoute: typeof AppGestionDashboardRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/gestion/admin': {
       id: '/_app/gestion/admin'
       path: '/gestion/admin'
@@ -190,6 +209,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppGestionAdminRoute: typeof AppGestionAdminRoute
+  AppGestionDashboardRoute: typeof AppGestionDashboardRoute
   AppGestionIndexRoute: typeof AppGestionIndexRoute
   AppGestionPrestacionesNuevaRoute: typeof AppGestionPrestacionesNuevaRoute
   AppGestionPrestacionesIndexRoute: typeof AppGestionPrestacionesIndexRoute
@@ -197,6 +217,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppGestionAdminRoute: AppGestionAdminRoute,
+  AppGestionDashboardRoute: AppGestionDashboardRoute,
   AppGestionIndexRoute: AppGestionIndexRoute,
   AppGestionPrestacionesNuevaRoute: AppGestionPrestacionesNuevaRoute,
   AppGestionPrestacionesIndexRoute: AppGestionPrestacionesIndexRoute,
@@ -213,3 +234,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
