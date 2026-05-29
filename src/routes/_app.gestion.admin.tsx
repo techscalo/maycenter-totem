@@ -11,6 +11,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { Trash2, Plus, Check, X } from "lucide-react";
 import { useUserContext } from "@/lib/gestion/use-auth";
+import { useServerFn } from "@tanstack/react-start";
+import {
+  listGestionUsers,
+  createGestionUser,
+  updateGestionUser,
+  deleteGestionUser,
+} from "@/lib/gestion/users.functions";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const Route = createFileRoute("/_app/gestion/admin")({
   component: AdminPage,
@@ -35,12 +49,14 @@ function AdminPage() {
           <TabsTrigger value="obras">Obras sociales</TabsTrigger>
           <TabsTrigger value="odontologos">Odontólogos</TabsTrigger>
           <TabsTrigger value="nomencladores">Nomencladores</TabsTrigger>
+          <TabsTrigger value="usuarios">Usuarios</TabsTrigger>
         </TabsList>
         <TabsContent value="sucursales"><SucursalesTab /></TabsContent>
         <TabsContent value="pisos"><PisosTab /></TabsContent>
         <TabsContent value="obras"><ObrasTab /></TabsContent>
         <TabsContent value="odontologos"><OdontologosTab /></TabsContent>
         <TabsContent value="nomencladores"><NomencladoresTab /></TabsContent>
+        <TabsContent value="usuarios"><UsuariosTab /></TabsContent>
       </Tabs>
     </div>
   );
@@ -98,6 +114,188 @@ function SucursalesTab() {
         </TableBody>
       </Table>
     </CardContent></Card>
+  );
+}
+
+function UsuariosTab() {
+  const qc = useQueryClient();
+  const list = useServerFn(listGestionUsers);
+  const create = useServerFn(createGestionUser);
+  const update = useServerFn(updateGestionUser);
+  const remove = useServerFn(deleteGestionUser);
+
+  const { data: users, isLoading } = useQuery({
+    queryKey: ["gestion-users"],
+    queryFn: () => list(),
+  });
+
+  const { data: sucursales } = useQuery({
+    queryKey: ["sucursales"],
+    queryFn: async () => (await supabase.from("sucursales").select("id, nombre").order("nombre")).data ?? [],
+  });
+
+  const [email, setEmail] = useState("");
+  const [nombre, setNombre] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"admin" | "administrativo" | "direccion" | "odontologo">("administrativo");
+  const [sucursalId, setSucursalId] = useState<string>("none");
+
+  const createM = useMutation({
+    mutationFn: () =>
+      create({
+        data: {
+          email,
+          password,
+          nombre,
+          role,
+          sucursal_id: sucursalId === "none" ? null : sucursalId,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Usuario creado");
+      setEmail(""); setNombre(""); setPassword(""); setRole("administrativo"); setSucursalId("none");
+      qc.invalidateQueries({ queryKey: ["gestion-users"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const updateM = useMutation({
+    mutationFn: (vars: { user_id: string; role?: any; sucursal_id?: string | null; new_password?: string }) =>
+      update({ data: vars as any }),
+    onSuccess: () => {
+      toast.success("Actualizado");
+      qc.invalidateQueries({ queryKey: ["gestion-users"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const removeM = useMutation({
+    mutationFn: (user_id: string) => remove({ data: { user_id } }),
+    onSuccess: () => {
+      toast.success("Eliminado");
+      qc.invalidateQueries({ queryKey: ["gestion-users"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card><CardContent className="p-4 space-y-3">
+        <div className="font-semibold">Nuevo usuario</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="space-y-1.5"><Label>Nombre</Label><Input value={nombre} onChange={(e) => setNombre(e.target.value)} /></div>
+          <div className="space-y-1.5"><Label>Email</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+          <div className="space-y-1.5"><Label>Contraseña</Label><Input type="text" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} /></div>
+          <div className="space-y-1.5">
+            <Label>Rol</Label>
+            <Select value={role} onValueChange={(v) => setRole(v as any)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="direccion">Dirección</SelectItem>
+                <SelectItem value="administrativo">Administrativo</SelectItem>
+                <SelectItem value="odontologo">Odontólogo</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Sucursal</Label>
+            <Select value={sucursalId} onValueChange={setSucursalId}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sin asignar</SelectItem>
+                {(sucursales ?? []).map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <Button
+            onClick={() => createM.mutate()}
+            disabled={createM.isPending || !email || !password || !nombre || password.length < 6}
+          >
+            <Plus className="h-4 w-4 mr-2" /> Crear usuario
+          </Button>
+        </div>
+      </CardContent></Card>
+
+      <Card><CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nombre</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Rol</TableHead>
+              <TableHead>Sucursal</TableHead>
+              <TableHead className="text-right">Acciones</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Cargando…</TableCell></TableRow>}
+            {(users ?? []).map((u: any) => (
+              <TableRow key={u.user_id}>
+                <TableCell className="font-medium">{u.nombre || "—"}</TableCell>
+                <TableCell className="text-sm">{u.email}</TableCell>
+                <TableCell>
+                  <Select
+                    value={u.roles[0] ?? "administrativo"}
+                    onValueChange={(v) => updateM.mutate({ user_id: u.user_id, role: v })}
+                  >
+                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="direccion">Dirección</SelectItem>
+                      <SelectItem value="administrativo">Administrativo</SelectItem>
+                      <SelectItem value="odontologo">Odontólogo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </TableCell>
+                <TableCell>
+                  <Select
+                    value={u.sucursal_id ?? "none"}
+                    onValueChange={(v) =>
+                      updateM.mutate({ user_id: u.user_id, sucursal_id: v === "none" ? null : v })
+                    }
+                  >
+                    <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sin asignar</SelectItem>
+                      {(sucursales ?? []).map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </TableCell>
+                <TableCell className="text-right space-x-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const np = window.prompt("Nueva contraseña (mín. 6)");
+                      if (np && np.length >= 6) updateM.mutate({ user_id: u.user_id, new_password: np });
+                    }}
+                  >
+                    Resetear pass
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => confirm(`¿Eliminar a ${u.email}?`) && removeM.mutate(u.user_id)}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+            {!isLoading && (users ?? []).length === 0 && (
+              <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Sin usuarios.</TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent></Card>
+    </div>
   );
 }
 

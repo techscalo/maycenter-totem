@@ -14,8 +14,11 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as GestionLoginRouteImport } from './routes/gestion.login'
 import { Route as AppGestionIndexRouteImport } from './routes/_app.gestion.index'
+import { Route as AppGestionDashboardRouteImport } from './routes/_app.gestion.dashboard'
 import { Route as AppGestionAdminRouteImport } from './routes/_app.gestion.admin'
 import { Route as AppGestionPrestacionesIndexRouteImport } from './routes/_app.gestion.prestaciones.index'
+import { Route as AppGestionReportesIomaRouteImport } from './routes/_app.gestion.reportes.ioma'
+import { Route as AppGestionReportesDiarioRouteImport } from './routes/_app.gestion.reportes.diario'
 import { Route as AppGestionPrestacionesNuevaRouteImport } from './routes/_app.gestion.prestaciones.nueva'
 
 const RecepcionRoute = RecepcionRouteImport.update({
@@ -42,6 +45,11 @@ const AppGestionIndexRoute = AppGestionIndexRouteImport.update({
   path: '/gestion/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppGestionDashboardRoute = AppGestionDashboardRouteImport.update({
+  id: '/gestion/dashboard',
+  path: '/gestion/dashboard',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppGestionAdminRoute = AppGestionAdminRouteImport.update({
   id: '/gestion/admin',
   path: '/gestion/admin',
@@ -51,6 +59,17 @@ const AppGestionPrestacionesIndexRoute =
   AppGestionPrestacionesIndexRouteImport.update({
     id: '/gestion/prestaciones/',
     path: '/gestion/prestaciones/',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppGestionReportesIomaRoute = AppGestionReportesIomaRouteImport.update({
+  id: '/gestion/reportes/ioma',
+  path: '/gestion/reportes/ioma',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGestionReportesDiarioRoute =
+  AppGestionReportesDiarioRouteImport.update({
+    id: '/gestion/reportes/diario',
+    path: '/gestion/reportes/diario',
     getParentRoute: () => AppRoute,
   } as any)
 const AppGestionPrestacionesNuevaRoute =
@@ -65,8 +84,11 @@ export interface FileRoutesByFullPath {
   '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
   '/gestion/admin': typeof AppGestionAdminRoute
+  '/gestion/dashboard': typeof AppGestionDashboardRoute
   '/gestion/': typeof AppGestionIndexRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
+  '/gestion/reportes/diario': typeof AppGestionReportesDiarioRoute
+  '/gestion/reportes/ioma': typeof AppGestionReportesIomaRoute
   '/gestion/prestaciones/': typeof AppGestionPrestacionesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -74,8 +96,11 @@ export interface FileRoutesByTo {
   '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
   '/gestion/admin': typeof AppGestionAdminRoute
+  '/gestion/dashboard': typeof AppGestionDashboardRoute
   '/gestion': typeof AppGestionIndexRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
+  '/gestion/reportes/diario': typeof AppGestionReportesDiarioRoute
+  '/gestion/reportes/ioma': typeof AppGestionReportesIomaRoute
   '/gestion/prestaciones': typeof AppGestionPrestacionesIndexRoute
 }
 export interface FileRoutesById {
@@ -85,8 +110,11 @@ export interface FileRoutesById {
   '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
   '/_app/gestion/admin': typeof AppGestionAdminRoute
+  '/_app/gestion/dashboard': typeof AppGestionDashboardRoute
   '/_app/gestion/': typeof AppGestionIndexRoute
   '/_app/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
+  '/_app/gestion/reportes/diario': typeof AppGestionReportesDiarioRoute
+  '/_app/gestion/reportes/ioma': typeof AppGestionReportesIomaRoute
   '/_app/gestion/prestaciones/': typeof AppGestionPrestacionesIndexRoute
 }
 export interface FileRouteTypes {
@@ -96,8 +124,11 @@ export interface FileRouteTypes {
     | '/recepcion'
     | '/gestion/login'
     | '/gestion/admin'
+    | '/gestion/dashboard'
     | '/gestion/'
     | '/gestion/prestaciones/nueva'
+    | '/gestion/reportes/diario'
+    | '/gestion/reportes/ioma'
     | '/gestion/prestaciones/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -105,8 +136,11 @@ export interface FileRouteTypes {
     | '/recepcion'
     | '/gestion/login'
     | '/gestion/admin'
+    | '/gestion/dashboard'
     | '/gestion'
     | '/gestion/prestaciones/nueva'
+    | '/gestion/reportes/diario'
+    | '/gestion/reportes/ioma'
     | '/gestion/prestaciones'
   id:
     | '__root__'
@@ -115,8 +149,11 @@ export interface FileRouteTypes {
     | '/recepcion'
     | '/gestion/login'
     | '/_app/gestion/admin'
+    | '/_app/gestion/dashboard'
     | '/_app/gestion/'
     | '/_app/gestion/prestaciones/nueva'
+    | '/_app/gestion/reportes/diario'
+    | '/_app/gestion/reportes/ioma'
     | '/_app/gestion/prestaciones/'
   fileRoutesById: FileRoutesById
 }
@@ -164,6 +201,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGestionIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/gestion/dashboard': {
+      id: '/_app/gestion/dashboard'
+      path: '/gestion/dashboard'
+      fullPath: '/gestion/dashboard'
+      preLoaderRoute: typeof AppGestionDashboardRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/gestion/admin': {
       id: '/_app/gestion/admin'
       path: '/gestion/admin'
@@ -178,6 +222,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGestionPrestacionesIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/gestion/reportes/ioma': {
+      id: '/_app/gestion/reportes/ioma'
+      path: '/gestion/reportes/ioma'
+      fullPath: '/gestion/reportes/ioma'
+      preLoaderRoute: typeof AppGestionReportesIomaRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/gestion/reportes/diario': {
+      id: '/_app/gestion/reportes/diario'
+      path: '/gestion/reportes/diario'
+      fullPath: '/gestion/reportes/diario'
+      preLoaderRoute: typeof AppGestionReportesDiarioRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/gestion/prestaciones/nueva': {
       id: '/_app/gestion/prestaciones/nueva'
       path: '/gestion/prestaciones/nueva'
@@ -190,15 +248,21 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppGestionAdminRoute: typeof AppGestionAdminRoute
+  AppGestionDashboardRoute: typeof AppGestionDashboardRoute
   AppGestionIndexRoute: typeof AppGestionIndexRoute
   AppGestionPrestacionesNuevaRoute: typeof AppGestionPrestacionesNuevaRoute
+  AppGestionReportesDiarioRoute: typeof AppGestionReportesDiarioRoute
+  AppGestionReportesIomaRoute: typeof AppGestionReportesIomaRoute
   AppGestionPrestacionesIndexRoute: typeof AppGestionPrestacionesIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppGestionAdminRoute: AppGestionAdminRoute,
+  AppGestionDashboardRoute: AppGestionDashboardRoute,
   AppGestionIndexRoute: AppGestionIndexRoute,
   AppGestionPrestacionesNuevaRoute: AppGestionPrestacionesNuevaRoute,
+  AppGestionReportesDiarioRoute: AppGestionReportesDiarioRoute,
+  AppGestionReportesIomaRoute: AppGestionReportesIomaRoute,
   AppGestionPrestacionesIndexRoute: AppGestionPrestacionesIndexRoute,
 }
 
