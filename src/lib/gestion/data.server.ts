@@ -485,6 +485,34 @@ export const createOdontologo = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const updateOdontologo = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        nombre: z.string().min(1).optional(),
+        numeroOd: z.string().nullable().optional(),
+        sucursalId: z.string().uuid().optional(),
+        pisoId: z.string().uuid().nullable().optional(),
+        activo: z.boolean().optional(),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    await db
+      .update(odontologos)
+      .set({
+        ...(data.nombre !== undefined ? { nombre: data.nombre.trim() } : {}),
+        ...(data.numeroOd !== undefined ? { numeroOd: data.numeroOd?.trim() || null } : {}),
+        ...(data.sucursalId !== undefined ? { sucursalId: data.sucursalId } : {}),
+        ...(data.pisoId !== undefined ? { pisoId: data.pisoId } : {}),
+        ...(data.activo !== undefined ? { activo: data.activo } : {}),
+      })
+      .where(eq(odontologos.id, data.id));
+    return { ok: true };
+  });
+
 export const deleteOdontologo = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data }) => {

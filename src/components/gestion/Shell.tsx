@@ -7,7 +7,6 @@ import {
   Table2,
   Settings,
   LogOut,
-  Building2,
   BarChart3,
   FileText,
   Stethoscope,
@@ -18,6 +17,7 @@ import { useClinicaActiva } from "@/lib/gestion/clinica";
 import { listSucursales } from "@/lib/gestion/data.server";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import logo from "@/assets/maycenter-logo.png";
 
 const NAV = [
   { to: "/gestion", label: "Inicio", icon: LayoutDashboard, exact: true },
@@ -47,9 +47,7 @@ export function GestionShell({ children }: { children: ReactNode }) {
       <aside className="hidden md:flex w-64 flex-col border-r bg-card">
         <div className="px-5 py-5 border-b">
           <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-lg bg-[var(--gradient-brand)] grid place-items-center text-primary-foreground font-bold">
-              M
-            </div>
+            <img src={logo} alt="Maycenter" className="h-9 w-9 rounded-lg object-contain" />
             <div>
               <div className="text-sm font-semibold">Maycenter</div>
               <div className="text-xs text-muted-foreground">Gestión clínica</div>
@@ -111,7 +109,7 @@ export function GestionShell({ children }: { children: ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="md:hidden border-b bg-card px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-primary" />
+            <img src={logo} alt="Maycenter" className="h-6 w-6 rounded object-contain" />
             <span className="font-semibold">Maycenter</span>
           </div>
           <Button variant="ghost" size="sm" onClick={handleLogout}>

@@ -51,7 +51,7 @@ TanStack Start (SSR) · Drizzle · Neon · Better Auth · TanStack Query · shad
 - [x] `start.ts` limpio (sin bearer middleware de Supabase; Better Auth usa cookies)
 - [x] **Borrado `src/integrations/supabase/*`** — cero referencias a supabase en src
 - [x] Typecheck limpio + smoke test (tótem/recepción/login 200, sin errores SSR)
-- Nota: `npm run build` (prod) falla por `@tanstack/router-core` importando `node:stream` — issue de config bundler/Cloudflare, PREEXISTENTE, ajeno a la migración. A resolver en deploy.
+- Nota: `npm run build` (prod) **compila OK** (genera dist/client + dist/server). El error previo de `node:stream` no se reproduce con el estado actual del proyecto.
 
 ## Fase 5 — Features funcionales ✅
 - [x] **T2** Selector de "clínica activa" en el sidebar (persistido en localStorage), usado como default en Nueva prestación. La asignación de sucursal por usuario se hace desde Admin → Usuarios
