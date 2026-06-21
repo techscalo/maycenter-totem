@@ -1,15 +1,15 @@
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { GestionShell } from "@/components/gestion/Shell";
-import { useSupabaseUser } from "@/lib/gestion/use-auth";
+import { useSession } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/_app")({
   component: ProtectedLayout,
 });
 
 function ProtectedLayout() {
-  const user = useSupabaseUser();
+  const { data: session, isPending } = useSession();
+  const user = isPending ? undefined : (session?.user ?? null);
   const navigate = useNavigate();
 
   useEffect(() => {

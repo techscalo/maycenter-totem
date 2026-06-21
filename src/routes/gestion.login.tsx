@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,8 +19,8 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/gestion" });
+    authClient.getSession().then(({ data }) => {
+      if (data?.session) navigate({ to: "/gestion" });
     });
   }, [navigate]);
 
@@ -29,20 +29,14 @@ function LoginPage() {
     setLoading(true);
     try {
       if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        const { error } = await authClient.signIn.email({ email, password });
+        if (error) throw new Error(error.message);
         toast.success("Bienvenido");
         navigate({ to: "/gestion" });
       } else {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { nombre } },
-        });
-        if (error) throw error;
+        const { error } = await authClient.signUp.email({ email, password, name: nombre });
+        if (error) throw new Error(error.message);
         toast.success("Cuenta creada. Iniciando sesión…");
-        const { error: e2 } = await supabase.auth.signInWithPassword({ email, password });
-        if (e2) throw e2;
         navigate({ to: "/gestion" });
       }
     } catch (err) {

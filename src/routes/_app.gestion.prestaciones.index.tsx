@@ -1,7 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import {
+  listSucursales,
+  listObrasSociales,
+  listOdontologos,
+  listPrestaciones,
+  deleteAtencionItem,
+  updateAtencionItem,
+  updateAtencionCabecera,
+} from "@/lib/gestion/data.server";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +29,7 @@ export const Route = createFileRoute("/_app/gestion/prestaciones/")({
 
 type Prestacion = {
   id: string;
+  atencion_id: string;
   fecha: string;
   paciente: string;
   dni: string;
@@ -33,8 +42,8 @@ type Prestacion = {
   sucursales: { nombre: string } | null;
   obras_sociales: { nombre: string } | null;
   pisos: { nombre: string } | null;
-  odontologos: { nombre: string } | null;
-  nomencladores: { codigo: string; descripcion: string } | null;
+  odontologos: { nombre: string; numero_od?: string | null } | null;
+  nomencladores: { codigo: string; descripcion: string | null } | null;
 };
 
 function todayISO() {
@@ -58,37 +67,29 @@ function PrestacionesList() {
 
   const { data: sucursales = [] } = useQuery({
     queryKey: ["sucursales"],
-    queryFn: async () => (await supabase.from("sucursales").select("*").order("nombre")).data ?? [],
+    queryFn: () => listSucursales(),
   });
   const { data: obras = [] } = useQuery({
     queryKey: ["obras_sociales"],
-    queryFn: async () => (await supabase.from("obras_sociales").select("*").order("nombre")).data ?? [],
+    queryFn: () => listObrasSociales(),
   });
   const { data: odontologos = [] } = useQuery({
     queryKey: ["odontologos"],
-    queryFn: async () => (await supabase.from("odontologos").select("*").order("nombre")).data ?? [],
+    queryFn: () => listOdontologos({ data: {} }),
   });
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["prestaciones", desde, hasta, sucursalId, obraSocialId, odontologoId],
-    queryFn: async () => {
-      let q = supabase
-        .from("prestaciones")
-        .select(
-          "*, sucursales(nombre), obras_sociales(nombre), pisos(nombre), odontologos(nombre), nomencladores(codigo, descripcion)"
-        )
-        .gte("fecha", desde)
-        .lte("fecha", hasta)
-        .order("fecha", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (sucursalId) q = q.eq("sucursal_id", sucursalId);
-      if (obraSocialId) q = q.eq("obra_social_id", obraSocialId);
-      if (odontologoId) q = q.eq("odontologo_id", odontologoId);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data ?? []) as Prestacion[];
-    },
+    queryFn: () =>
+      listPrestaciones({
+        data: {
+          desde,
+          hasta,
+          ...(sucursalId ? { sucursalId } : {}),
+          ...(obraSocialId ? { obraSocialId } : {}),
+          ...(odontologoId ? { odontologoId } : {}),
+        },
+      }) as Promise<Prestacion[]>,
   });
 
   const filtered = useMemo(() => {
@@ -112,10 +113,7 @@ function PrestacionesList() {
   }, [filtered]);
 
   const delMut = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("prestaciones").delete().eq("id", id);
-      if (error) throw error;
-    },
+    mutationFn: (itemId: string) => deleteAtencionItem({ data: { itemId } }),
     onSuccess: () => {
       toast.success("Prestación eliminada");
       qc.invalidateQueries({ queryKey: ["prestaciones"] });
@@ -125,18 +123,17 @@ function PrestacionesList() {
 
   const updateMut = useMutation({
     mutationFn: async (p: Prestacion) => {
-      const { error } = await supabase
-        .from("prestaciones")
-        .update({
+      await updateAtencionItem({
+        data: { itemId: p.id, cantidad: p.cantidad, monto: p.monto, montoUsd: p.monto_usd },
+      });
+      await updateAtencionCabecera({
+        data: {
+          atencionId: p.atencion_id,
           paciente: p.paciente,
           dni: p.dni,
-          cantidad: p.cantidad,
-          monto: p.monto,
-          monto_usd: p.monto_usd,
           observaciones: p.observaciones,
-        })
-        .eq("id", p.id);
-      if (error) throw error;
+        },
+      });
     },
     onSuccess: () => {
       toast.success("Actualizado");

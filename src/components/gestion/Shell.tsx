@@ -1,25 +1,30 @@
 import { ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   ListPlus,
   Table2,
   Settings,
   LogOut,
-  Building2,
   BarChart3,
   FileText,
+  Stethoscope,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { authClient } from "@/lib/auth-client";
 import { useUserContext } from "@/lib/gestion/use-auth";
+import { useClinicaActiva } from "@/lib/gestion/clinica";
+import { listSucursales } from "@/lib/gestion/data.server";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import logo from "@/assets/maycenter-logo.png";
 
 const NAV = [
   { to: "/gestion", label: "Inicio", icon: LayoutDashboard, exact: true },
   { to: "/gestion/dashboard", label: "Dashboard", icon: BarChart3 },
   { to: "/gestion/prestaciones/nueva", label: "Nueva prestación", icon: ListPlus },
   { to: "/gestion/prestaciones", label: "Prestaciones", icon: Table2 },
+  { to: "/gestion/odontologos", label: "Odontólogos", icon: Stethoscope },
   { to: "/gestion/reportes/diario", label: "Reporte diario", icon: FileText },
   { to: "/gestion/reportes/ioma", label: "Reporte IOMA", icon: FileText },
   { to: "/gestion/admin", label: "Administración", icon: Settings, adminOnly: true },
@@ -29,9 +34,11 @@ export function GestionShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { profile, roles, isAdmin } = useUserContext();
+  const [clinica, setClinica] = useClinicaActiva();
+  const { data: sucursales = [] } = useQuery({ queryKey: ["sucursales"], queryFn: () => listSucursales() });
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await authClient.signOut();
     navigate({ to: "/gestion/login" });
   };
 
@@ -40,9 +47,7 @@ export function GestionShell({ children }: { children: ReactNode }) {
       <aside className="hidden md:flex w-64 flex-col border-r bg-card">
         <div className="px-5 py-5 border-b">
           <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-lg bg-[var(--gradient-brand)] grid place-items-center text-primary-foreground font-bold">
-              M
-            </div>
+            <img src={logo} alt="Maycenter" className="h-9 w-9 rounded-lg object-contain" />
             <div>
               <div className="text-sm font-semibold">Maycenter</div>
               <div className="text-xs text-muted-foreground">Gestión clínica</div>
@@ -73,6 +78,21 @@ export function GestionShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="px-3 py-3 border-t space-y-2">
+          <div className="px-2">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+              Clínica activa
+            </div>
+            <select
+              className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+              value={clinica}
+              onChange={(e) => setClinica(e.target.value)}
+            >
+              <option value="">Todas / sin fijar</option>
+              {sucursales.map((s: any) => (
+                <option key={s.id} value={s.id}>{s.nombre}</option>
+              ))}
+            </select>
+          </div>
           <div className="px-2 text-xs text-muted-foreground truncate">
             {profile?.nombre || "Usuario"}
           </div>
@@ -89,7 +109,7 @@ export function GestionShell({ children }: { children: ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="md:hidden border-b bg-card px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-primary" />
+            <img src={logo} alt="Maycenter" className="h-6 w-6 rounded object-contain" />
             <span className="font-semibold">Maycenter</span>
           </div>
           <Button variant="ghost" size="sm" onClick={handleLogout}>

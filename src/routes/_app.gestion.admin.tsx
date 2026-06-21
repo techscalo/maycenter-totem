@@ -1,7 +1,6 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +10,29 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { Trash2, Plus, Check, X } from "lucide-react";
 import { useUserContext } from "@/lib/gestion/use-auth";
-import { useServerFn } from "@tanstack/react-start";
+import {
+  listSucursales,
+  createSucursal,
+  deleteSucursal,
+  listPisosAll,
+  createPiso,
+  deletePiso,
+  listObrasSociales,
+  createObraSocial,
+  toggleObraSocial,
+  deleteObraSocial,
+  listOdontologos,
+  createOdontologo,
+  deleteOdontologo,
+  listNomencladoresAdmin,
+  createNomenclador,
+  updateNomenclador,
+  deleteNomenclador,
+  listServiciosParticularesAdmin,
+  createServicioParticular,
+  updateServicioParticular,
+  deleteServicioParticular,
+} from "@/lib/gestion/data.server";
 import {
   listGestionUsers,
   createGestionUser,
@@ -49,6 +70,7 @@ function AdminPage() {
           <TabsTrigger value="obras">Obras sociales</TabsTrigger>
           <TabsTrigger value="odontologos">Odontólogos</TabsTrigger>
           <TabsTrigger value="nomencladores">Nomencladores</TabsTrigger>
+          <TabsTrigger value="particulares">Particulares</TabsTrigger>
           <TabsTrigger value="usuarios">Usuarios</TabsTrigger>
         </TabsList>
         <TabsContent value="sucursales"><SucursalesTab /></TabsContent>
@@ -56,39 +78,26 @@ function AdminPage() {
         <TabsContent value="obras"><ObrasTab /></TabsContent>
         <TabsContent value="odontologos"><OdontologosTab /></TabsContent>
         <TabsContent value="nomencladores"><NomencladoresTab /></TabsContent>
+        <TabsContent value="particulares"><ParticularesTab /></TabsContent>
         <TabsContent value="usuarios"><UsuariosTab /></TabsContent>
       </Tabs>
     </div>
   );
 }
 
-function useCatalog<T = any>(table: string, order = "nombre") {
-  const qc = useQueryClient();
-  const query = useQuery({
-    queryKey: [table, "admin"],
-    queryFn: async () => (await supabase.from(table as any).select("*").order(order)).data as T[],
-  });
-  const invalidate = () => qc.invalidateQueries({ queryKey: [table, "admin"] });
-  return { ...query, invalidate };
-}
-
 function SucursalesTab() {
-  const { data = [], invalidate } = useCatalog<any>("sucursales");
+  const qc = useQueryClient();
+  const { data = [] } = useQuery({ queryKey: ["sucursales", "admin"], queryFn: () => listSucursales() });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["sucursales", "admin"] });
   const [nombre, setNombre] = useState("");
 
   const create = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("sucursales").insert({ nombre: nombre.trim() });
-      if (error) throw error;
-    },
+    mutationFn: () => createSucursal({ data: { nombre: nombre.trim() } }),
     onSuccess: () => { toast.success("Sucursal creada"); setNombre(""); invalidate(); },
     onError: (e) => toast.error((e as Error).message),
   });
   const del = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("sucursales").delete().eq("id", id);
-      if (error) throw error;
-    },
+    mutationFn: (id: string) => deleteSucursal({ data: { id } }),
     onSuccess: () => { toast.success("Eliminada"); invalidate(); },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -117,21 +126,335 @@ function SucursalesTab() {
   );
 }
 
+function PisosTab() {
+  const qc = useQueryClient();
+  const { data = [] } = useQuery({ queryKey: ["pisos", "admin"], queryFn: () => listPisosAll() });
+  const { data: sucursales = [] } = useQuery({ queryKey: ["sucursales"], queryFn: () => listSucursales() });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["pisos", "admin"] });
+  const [nombre, setNombre] = useState("");
+  const [sucursalId, setSucursalId] = useState("");
+
+  const create = useMutation({
+    mutationFn: () => createPiso({ data: { nombre: nombre.trim(), sucursalId } }),
+    onSuccess: () => { toast.success("Piso creado"); setNombre(""); invalidate(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const del = useMutation({
+    mutationFn: (id: string) => deletePiso({ data: { id } }),
+    onSuccess: () => { toast.success("Eliminado"); invalidate(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  return (
+    <Card><CardContent className="p-4 space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+        <div><Label>Sucursal</Label>
+          <select className="h-10 w-full rounded-md border bg-transparent px-3 text-sm" value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
+            <option value="">Elegir…</option>
+            {sucursales.map((s: any) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+          </select>
+        </div>
+        <div><Label>Nombre piso</Label><Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Piso 1" /></div>
+        <Button onClick={() => sucursalId && nombre.trim() && create.mutate()} disabled={!sucursalId || !nombre.trim()}><Plus className="h-4 w-4 mr-1" />Agregar</Button>
+      </div>
+      <Table><TableHeader><TableRow><TableHead>Sucursal</TableHead><TableHead>Piso</TableHead><TableHead></TableHead></TableRow></TableHeader>
+        <TableBody>
+          {data.map((p: any) => (
+            <TableRow key={p.id}>
+              <TableCell>{p.sucursalNombre ?? "—"}</TableCell>
+              <TableCell>{p.nombre}</TableCell>
+              <TableCell className="text-right">
+                <Button size="icon" variant="ghost" onClick={() => confirm("¿Eliminar?") && del.mutate(p.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </CardContent></Card>
+  );
+}
+
+function ObrasTab() {
+  const qc = useQueryClient();
+  const { data = [] } = useQuery({ queryKey: ["obras_sociales", "admin"], queryFn: () => listObrasSociales() });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["obras_sociales", "admin"] });
+  const [nombre, setNombre] = useState("");
+  const [esPart, setEsPart] = useState(false);
+
+  const create = useMutation({
+    mutationFn: () => createObraSocial({ data: { nombre: nombre.trim(), esParticular: esPart } }),
+    onSuccess: () => { toast.success("Obra social creada"); setNombre(""); setEsPart(false); invalidate(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const toggle = useMutation({
+    mutationFn: (o: any) => toggleObraSocial({ data: { id: o.id, activa: !o.activa } }),
+    onSuccess: invalidate,
+  });
+  const del = useMutation({
+    mutationFn: (id: string) => deleteObraSocial({ data: { id } }),
+    onSuccess: () => { toast.success("Eliminada"); invalidate(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  return (
+    <Card><CardContent className="p-4 space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-2 items-end">
+        <div><Label>Nombre</Label><Input value={nombre} onChange={(e) => setNombre(e.target.value)} /></div>
+        <label className="flex items-center gap-2 text-sm pb-2">
+          <input type="checkbox" checked={esPart} onChange={(e) => setEsPart(e.target.checked)} />
+          Es particular
+        </label>
+        <Button onClick={() => nombre.trim() && create.mutate()}><Plus className="h-4 w-4 mr-1" />Agregar</Button>
+      </div>
+      <Table><TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Particular</TableHead><TableHead>Activa</TableHead><TableHead></TableHead></TableRow></TableHeader>
+        <TableBody>
+          {data.map((o: any) => (
+            <TableRow key={o.id}>
+              <TableCell>{o.nombre}</TableCell>
+              <TableCell>{o.esParticular ? <Check className="h-4 w-4 text-success" /> : <X className="h-4 w-4 text-muted-foreground" />}</TableCell>
+              <TableCell>
+                <button onClick={() => toggle.mutate(o)} className="text-xs underline">
+                  {o.activa ? "Activa" : "Inactiva"}
+                </button>
+              </TableCell>
+              <TableCell className="text-right">
+                <Button size="icon" variant="ghost" onClick={() => confirm("¿Eliminar?") && del.mutate(o.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </CardContent></Card>
+  );
+}
+
+function OdontologosTab() {
+  const qc = useQueryClient();
+  const { data = [] } = useQuery({ queryKey: ["odontologos", "admin"], queryFn: () => listOdontologos({ data: {} }) });
+  const { data: sucursales = [] } = useQuery({ queryKey: ["sucursales"], queryFn: () => listSucursales() });
+  const { data: pisos = [] } = useQuery({ queryKey: ["pisos", "admin"], queryFn: () => listPisosAll() });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["odontologos", "admin"] });
+  const [form, setForm] = useState({ nombre: "", numero_od: "", sucursal_id: "", piso_id: "" });
+
+  const create = useMutation({
+    mutationFn: () =>
+      createOdontologo({
+        data: {
+          nombre: form.nombre.trim(),
+          numeroOd: form.numero_od.trim() || null,
+          sucursalId: form.sucursal_id,
+          pisoId: form.piso_id || null,
+        },
+      }),
+    onSuccess: () => { toast.success("Odontólogo creado"); setForm({ nombre: "", numero_od: "", sucursal_id: "", piso_id: "" }); invalidate(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const del = useMutation({
+    mutationFn: (id: string) => deleteOdontologo({ data: { id } }),
+    onSuccess: () => { toast.success("Eliminado"); invalidate(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const pisosFiltrados = pisos.filter((p: any) => p.sucursalId === form.sucursal_id);
+
+  return (
+    <Card><CardContent className="p-4 space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
+        <div><Label>Sucursal</Label>
+          <select className="h-10 w-full rounded-md border bg-transparent px-3 text-sm" value={form.sucursal_id} onChange={(e) => setForm({ ...form, sucursal_id: e.target.value, piso_id: "" })}>
+            <option value="">…</option>
+            {sucursales.map((s: any) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+          </select>
+        </div>
+        <div><Label>Piso</Label>
+          <select className="h-10 w-full rounded-md border bg-transparent px-3 text-sm" value={form.piso_id} disabled={!form.sucursal_id} onChange={(e) => setForm({ ...form, piso_id: e.target.value })}>
+            <option value="">—</option>
+            {pisosFiltrados.map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+          </select>
+        </div>
+        <div><Label>Nombre</Label><Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} /></div>
+        <div><Label>Nº OD</Label><Input value={form.numero_od} onChange={(e) => setForm({ ...form, numero_od: e.target.value })} /></div>
+        <Button onClick={() => form.nombre.trim() && form.sucursal_id && create.mutate()}><Plus className="h-4 w-4 mr-1" />Agregar</Button>
+      </div>
+      <Table><TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Nº OD</TableHead><TableHead>Sucursal</TableHead><TableHead>Piso</TableHead><TableHead></TableHead></TableRow></TableHeader>
+        <TableBody>
+          {data.map((o: any) => (
+            <TableRow key={o.id}>
+              <TableCell>{o.nombre}</TableCell>
+              <TableCell>{o.numeroOd ?? "—"}</TableCell>
+              <TableCell>{o.sucursalNombre ?? "—"}</TableCell>
+              <TableCell>{o.pisoNombre ?? "—"}</TableCell>
+              <TableCell className="text-right">
+                <Button size="icon" variant="ghost" onClick={() => confirm("¿Eliminar?") && del.mutate(o.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </CardContent></Card>
+  );
+}
+
+function NomencladoresTab() {
+  const qc = useQueryClient();
+  const { data: obras = [] } = useQuery({ queryKey: ["obras_sociales", "admin"], queryFn: () => listObrasSociales() });
+  const [obraId, setObraId] = useState("");
+
+  const { data = [] } = useQuery({
+    queryKey: ["nomencladores_admin", obraId],
+    enabled: !!obraId,
+    queryFn: () => listNomencladoresAdmin({ data: { obraSocialId: obraId } }),
+  });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["nomencladores_admin", obraId] });
+
+  const [form, setForm] = useState({ codigo: "", descripcion: "", monto: 0 });
+  const create = useMutation({
+    mutationFn: () =>
+      createNomenclador({
+        data: { obraSocialId: obraId, codigo: form.codigo.trim(), descripcion: form.descripcion.trim(), monto: Number(form.monto) || 0 },
+      }),
+    onSuccess: () => { toast.success("Código creado"); setForm({ codigo: "", descripcion: "", monto: 0 }); invalidate(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const upd = useMutation({
+    mutationFn: ({ id, monto }: { id: string; monto: number }) => updateNomenclador({ data: { id, monto } }),
+    onSuccess: invalidate,
+  });
+  const del = useMutation({
+    mutationFn: (id: string) => deleteNomenclador({ data: { id } }),
+    onSuccess: () => { toast.success("Eliminado"); invalidate(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  return (
+    <Card><CardContent className="p-4 space-y-4">
+      <div>
+        <Label>Obra social</Label>
+        <select className="h-10 w-full md:w-80 rounded-md border bg-transparent px-3 text-sm" value={obraId} onChange={(e) => setObraId(e.target.value)}>
+          <option value="">Elegí una obra social…</option>
+          {obras.map((o: any) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+        </select>
+      </div>
+
+      {obraId && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-[120px_1fr_140px_auto] gap-2 items-end">
+            <div><Label>Código</Label><Input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} /></div>
+            <div><Label>Descripción</Label><Input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} /></div>
+            <div><Label>Monto</Label><Input type="number" min={0} step="0.01" value={form.monto} onChange={(e) => setForm({ ...form, monto: Number(e.target.value) })} /></div>
+            <Button onClick={() => form.codigo.trim() && create.mutate()}><Plus className="h-4 w-4 mr-1" />Agregar</Button>
+          </div>
+
+          <Table><TableHeader><TableRow><TableHead>Código</TableHead><TableHead>Descripción</TableHead><TableHead className="w-40 text-right">Monto</TableHead><TableHead></TableHead></TableRow></TableHeader>
+            <TableBody>
+              {data.map((n: any) => (
+                <TableRow key={n.id}>
+                  <TableCell className="font-mono">{n.codigo}</TableCell>
+                  <TableCell>{n.descripcion}</TableCell>
+                  <TableCell className="text-right">
+                    <Input
+                      type="number" min={0} step="0.01"
+                      className="h-8 text-right"
+                      defaultValue={n.monto}
+                      onBlur={(e) => {
+                        const v = Number(e.target.value);
+                        if (v !== Number(n.monto)) upd.mutate({ id: n.id, monto: v });
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button size="icon" variant="ghost" onClick={() => confirm("¿Eliminar?") && del.mutate(n.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {data.length === 0 && (
+                <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">Sin códigos cargados.</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </>
+      )}
+    </CardContent></Card>
+  );
+}
+
+function ParticularesTab() {
+  const qc = useQueryClient();
+  const { data = [] } = useQuery({
+    queryKey: ["servicios_particulares", "admin"],
+    queryFn: () => listServiciosParticularesAdmin(),
+  });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["servicios_particulares", "admin"] });
+
+  const [form, setForm] = useState({ codigo: "", descripcion: "", precio_usd: 0 });
+  const create = useMutation({
+    mutationFn: () =>
+      createServicioParticular({
+        data: { codigo: form.codigo.trim() || null, descripcion: form.descripcion.trim(), precioUsd: Number(form.precio_usd) || 0 },
+      }),
+    onSuccess: () => { toast.success("Servicio creado"); setForm({ codigo: "", descripcion: "", precio_usd: 0 }); invalidate(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const upd = useMutation({
+    mutationFn: ({ id, precioUsd }: { id: string; precioUsd: number }) => updateServicioParticular({ data: { id, precioUsd } }),
+    onSuccess: invalidate,
+  });
+  const del = useMutation({
+    mutationFn: (id: string) => deleteServicioParticular({ data: { id } }),
+    onSuccess: () => { toast.success("Eliminado"); invalidate(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  return (
+    <Card><CardContent className="p-4 space-y-4">
+      <p className="text-sm text-muted-foreground">Catálogo de servicios particulares con precio en dólares (lista aparte de obras sociales).</p>
+      <div className="grid grid-cols-1 md:grid-cols-[120px_1fr_140px_auto] gap-2 items-end">
+        <div><Label>Código</Label><Input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} placeholder="Opcional" /></div>
+        <div><Label>Descripción</Label><Input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} /></div>
+        <div><Label>Precio USD</Label><Input type="number" min={0} step="0.01" value={form.precio_usd} onChange={(e) => setForm({ ...form, precio_usd: Number(e.target.value) })} /></div>
+        <Button onClick={() => form.descripcion.trim() && create.mutate()}><Plus className="h-4 w-4 mr-1" />Agregar</Button>
+      </div>
+      <Table><TableHeader><TableRow><TableHead>Código</TableHead><TableHead>Descripción</TableHead><TableHead className="w-40 text-right">Precio USD</TableHead><TableHead></TableHead></TableRow></TableHeader>
+        <TableBody>
+          {data.map((s: any) => (
+            <TableRow key={s.id}>
+              <TableCell className="font-mono">{s.codigo ?? "—"}</TableCell>
+              <TableCell>{s.descripcion}</TableCell>
+              <TableCell className="text-right">
+                <Input
+                  type="number" min={0} step="0.01"
+                  className="h-8 text-right"
+                  defaultValue={s.precioUsd}
+                  onBlur={(e) => {
+                    const v = Number(e.target.value);
+                    if (v !== Number(s.precioUsd)) upd.mutate({ id: s.id, precioUsd: v });
+                  }}
+                />
+              </TableCell>
+              <TableCell className="text-right">
+                <Button size="icon" variant="ghost" onClick={() => confirm("¿Eliminar?") && del.mutate(s.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+              </TableCell>
+            </TableRow>
+          ))}
+          {data.length === 0 && (
+            <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">Sin servicios cargados.</TableCell></TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </CardContent></Card>
+  );
+}
+
 function UsuariosTab() {
   const qc = useQueryClient();
-  const list = useServerFn(listGestionUsers);
-  const create = useServerFn(createGestionUser);
-  const update = useServerFn(updateGestionUser);
-  const remove = useServerFn(deleteGestionUser);
 
   const { data: users, isLoading } = useQuery({
     queryKey: ["gestion-users"],
-    queryFn: () => list(),
+    queryFn: () => listGestionUsers(),
   });
-
   const { data: sucursales } = useQuery({
     queryKey: ["sucursales"],
-    queryFn: async () => (await supabase.from("sucursales").select("id, nombre").order("nombre")).data ?? [],
+    queryFn: () => listSucursales(),
   });
 
   const [email, setEmail] = useState("");
@@ -142,14 +465,8 @@ function UsuariosTab() {
 
   const createM = useMutation({
     mutationFn: () =>
-      create({
-        data: {
-          email,
-          password,
-          nombre,
-          role,
-          sucursal_id: sucursalId === "none" ? null : sucursalId,
-        },
+      createGestionUser({
+        data: { email, password, nombre, role, sucursal_id: sucursalId === "none" ? null : sucursalId },
       }),
     onSuccess: () => {
       toast.success("Usuario creado");
@@ -161,7 +478,7 @@ function UsuariosTab() {
 
   const updateM = useMutation({
     mutationFn: (vars: { user_id: string; role?: any; sucursal_id?: string | null; new_password?: string }) =>
-      update({ data: vars as any }),
+      updateGestionUser({ data: vars as any }),
     onSuccess: () => {
       toast.success("Actualizado");
       qc.invalidateQueries({ queryKey: ["gestion-users"] });
@@ -170,7 +487,7 @@ function UsuariosTab() {
   });
 
   const removeM = useMutation({
-    mutationFn: (user_id: string) => remove({ data: { user_id } }),
+    mutationFn: (user_id: string) => deleteGestionUser({ data: { user_id } }),
     onSuccess: () => {
       toast.success("Eliminado");
       qc.invalidateQueries({ queryKey: ["gestion-users"] });
@@ -204,7 +521,7 @@ function UsuariosTab() {
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Sin asignar</SelectItem>
-                {(sucursales ?? []).map((s) => (
+                {(sucursales ?? []).map((s: any) => (
                   <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
                 ))}
               </SelectContent>
@@ -262,7 +579,7 @@ function UsuariosTab() {
                     <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Sin asignar</SelectItem>
-                      {(sucursales ?? []).map((s) => (
+                      {(sucursales ?? []).map((s: any) => (
                         <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
                       ))}
                     </SelectContent>
@@ -296,265 +613,5 @@ function UsuariosTab() {
         </Table>
       </CardContent></Card>
     </div>
-  );
-}
-
-function PisosTab() {
-  const { data = [], invalidate } = useCatalog<any>("pisos");
-  const { data: sucursales = [] } = useCatalog<any>("sucursales");
-  const [nombre, setNombre] = useState("");
-  const [sucursalId, setSucursalId] = useState("");
-
-  const create = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("pisos").insert({ nombre: nombre.trim(), sucursal_id: sucursalId });
-      if (error) throw error;
-    },
-    onSuccess: () => { toast.success("Piso creado"); setNombre(""); invalidate(); },
-    onError: (e) => toast.error((e as Error).message),
-  });
-  const del = useMutation({
-    mutationFn: async (id: string) => { const { error } = await supabase.from("pisos").delete().eq("id", id); if (error) throw error; },
-    onSuccess: () => { toast.success("Eliminado"); invalidate(); },
-    onError: (e) => toast.error((e as Error).message),
-  });
-
-  return (
-    <Card><CardContent className="p-4 space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
-        <div><Label>Sucursal</Label>
-          <select className="h-10 w-full rounded-md border bg-transparent px-3 text-sm" value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
-            <option value="">Elegir…</option>
-            {sucursales.map((s: any) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-          </select>
-        </div>
-        <div><Label>Nombre piso</Label><Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Piso 1" /></div>
-        <Button onClick={() => sucursalId && nombre.trim() && create.mutate()} disabled={!sucursalId || !nombre.trim()}><Plus className="h-4 w-4 mr-1" />Agregar</Button>
-      </div>
-      <Table><TableHeader><TableRow><TableHead>Sucursal</TableHead><TableHead>Piso</TableHead><TableHead></TableHead></TableRow></TableHeader>
-        <TableBody>
-          {data.map((p: any) => (
-            <TableRow key={p.id}>
-              <TableCell>{sucursales.find((s: any) => s.id === p.sucursal_id)?.nombre ?? "—"}</TableCell>
-              <TableCell>{p.nombre}</TableCell>
-              <TableCell className="text-right">
-                <Button size="icon" variant="ghost" onClick={() => confirm("¿Eliminar?") && del.mutate(p.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </CardContent></Card>
-  );
-}
-
-function ObrasTab() {
-  const { data = [], invalidate } = useCatalog<any>("obras_sociales");
-  const [nombre, setNombre] = useState("");
-  const [esPart, setEsPart] = useState(false);
-
-  const create = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("obras_sociales").insert({ nombre: nombre.trim(), es_particular: esPart });
-      if (error) throw error;
-    },
-    onSuccess: () => { toast.success("Obra social creada"); setNombre(""); setEsPart(false); invalidate(); },
-    onError: (e) => toast.error((e as Error).message),
-  });
-  const toggle = useMutation({
-    mutationFn: async (o: any) => { const { error } = await supabase.from("obras_sociales").update({ activa: !o.activa }).eq("id", o.id); if (error) throw error; },
-    onSuccess: invalidate,
-  });
-  const del = useMutation({
-    mutationFn: async (id: string) => { const { error } = await supabase.from("obras_sociales").delete().eq("id", id); if (error) throw error; },
-    onSuccess: () => { toast.success("Eliminada"); invalidate(); },
-    onError: (e) => toast.error((e as Error).message),
-  });
-
-  return (
-    <Card><CardContent className="p-4 space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-2 items-end">
-        <div><Label>Nombre</Label><Input value={nombre} onChange={(e) => setNombre(e.target.value)} /></div>
-        <label className="flex items-center gap-2 text-sm pb-2">
-          <input type="checkbox" checked={esPart} onChange={(e) => setEsPart(e.target.checked)} />
-          Es particular
-        </label>
-        <Button onClick={() => nombre.trim() && create.mutate()}><Plus className="h-4 w-4 mr-1" />Agregar</Button>
-      </div>
-      <Table><TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Particular</TableHead><TableHead>Activa</TableHead><TableHead></TableHead></TableRow></TableHeader>
-        <TableBody>
-          {data.map((o: any) => (
-            <TableRow key={o.id}>
-              <TableCell>{o.nombre}</TableCell>
-              <TableCell>{o.es_particular ? <Check className="h-4 w-4 text-success" /> : <X className="h-4 w-4 text-muted-foreground" />}</TableCell>
-              <TableCell>
-                <button onClick={() => toggle.mutate(o)} className="text-xs underline">
-                  {o.activa ? "Activa" : "Inactiva"}
-                </button>
-              </TableCell>
-              <TableCell className="text-right">
-                <Button size="icon" variant="ghost" onClick={() => confirm("¿Eliminar?") && del.mutate(o.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </CardContent></Card>
-  );
-}
-
-function OdontologosTab() {
-  const { data = [], invalidate } = useCatalog<any>("odontologos");
-  const { data: sucursales = [] } = useCatalog<any>("sucursales");
-  const { data: pisos = [] } = useCatalog<any>("pisos");
-  const [form, setForm] = useState({ nombre: "", numero_od: "", sucursal_id: "", piso_id: "" });
-
-  const create = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("odontologos").insert({
-        nombre: form.nombre.trim(),
-        numero_od: form.numero_od.trim() || null,
-        sucursal_id: form.sucursal_id,
-        piso_id: form.piso_id || null,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => { toast.success("Odontólogo creado"); setForm({ nombre: "", numero_od: "", sucursal_id: "", piso_id: "" }); invalidate(); },
-    onError: (e) => toast.error((e as Error).message),
-  });
-  const del = useMutation({
-    mutationFn: async (id: string) => { const { error } = await supabase.from("odontologos").delete().eq("id", id); if (error) throw error; },
-    onSuccess: () => { toast.success("Eliminado"); invalidate(); },
-    onError: (e) => toast.error((e as Error).message),
-  });
-
-  const pisosFiltrados = pisos.filter((p: any) => p.sucursal_id === form.sucursal_id);
-
-  return (
-    <Card><CardContent className="p-4 space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
-        <div><Label>Sucursal</Label>
-          <select className="h-10 w-full rounded-md border bg-transparent px-3 text-sm" value={form.sucursal_id} onChange={(e) => setForm({ ...form, sucursal_id: e.target.value, piso_id: "" })}>
-            <option value="">…</option>
-            {sucursales.map((s: any) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-          </select>
-        </div>
-        <div><Label>Piso</Label>
-          <select className="h-10 w-full rounded-md border bg-transparent px-3 text-sm" value={form.piso_id} disabled={!form.sucursal_id} onChange={(e) => setForm({ ...form, piso_id: e.target.value })}>
-            <option value="">—</option>
-            {pisosFiltrados.map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
-        </div>
-        <div><Label>Nombre</Label><Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} /></div>
-        <div><Label>Nº OD</Label><Input value={form.numero_od} onChange={(e) => setForm({ ...form, numero_od: e.target.value })} /></div>
-        <Button onClick={() => form.nombre.trim() && form.sucursal_id && create.mutate()}><Plus className="h-4 w-4 mr-1" />Agregar</Button>
-      </div>
-      <Table><TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Nº OD</TableHead><TableHead>Sucursal</TableHead><TableHead>Piso</TableHead><TableHead></TableHead></TableRow></TableHeader>
-        <TableBody>
-          {data.map((o: any) => (
-            <TableRow key={o.id}>
-              <TableCell>{o.nombre}</TableCell>
-              <TableCell>{o.numero_od ?? "—"}</TableCell>
-              <TableCell>{sucursales.find((s: any) => s.id === o.sucursal_id)?.nombre ?? "—"}</TableCell>
-              <TableCell>{pisos.find((p: any) => p.id === o.piso_id)?.nombre ?? "—"}</TableCell>
-              <TableCell className="text-right">
-                <Button size="icon" variant="ghost" onClick={() => confirm("¿Eliminar?") && del.mutate(o.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </CardContent></Card>
-  );
-}
-
-function NomencladoresTab() {
-  const { data: obras = [] } = useCatalog<any>("obras_sociales");
-  const [obraId, setObraId] = useState("");
-  const qc = useQueryClient();
-
-  const { data = [] } = useQuery({
-    queryKey: ["nomencladores_admin", obraId],
-    enabled: !!obraId,
-    queryFn: async () => (await supabase.from("nomencladores").select("*").eq("obra_social_id", obraId).order("codigo")).data ?? [],
-  });
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["nomencladores_admin", obraId] });
-
-  const [form, setForm] = useState({ codigo: "", descripcion: "", monto: 0 });
-  const create = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("nomencladores").insert({
-        obra_social_id: obraId,
-        codigo: form.codigo.trim(),
-        descripcion: form.descripcion.trim(),
-        monto: Number(form.monto) || 0,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => { toast.success("Código creado"); setForm({ codigo: "", descripcion: "", monto: 0 }); invalidate(); },
-    onError: (e) => toast.error((e as Error).message),
-  });
-  const upd = useMutation({
-    mutationFn: async ({ id, monto }: { id: string; monto: number }) => {
-      const { error } = await supabase.from("nomencladores").update({ monto }).eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: invalidate,
-  });
-  const del = useMutation({
-    mutationFn: async (id: string) => { const { error } = await supabase.from("nomencladores").delete().eq("id", id); if (error) throw error; },
-    onSuccess: () => { toast.success("Eliminado"); invalidate(); },
-    onError: (e) => toast.error((e as Error).message),
-  });
-
-  return (
-    <Card><CardContent className="p-4 space-y-4">
-      <div>
-        <Label>Obra social</Label>
-        <select className="h-10 w-full md:w-80 rounded-md border bg-transparent px-3 text-sm" value={obraId} onChange={(e) => setObraId(e.target.value)}>
-          <option value="">Elegí una obra social…</option>
-          {obras.map((o: any) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
-        </select>
-      </div>
-
-      {obraId && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-[120px_1fr_140px_auto] gap-2 items-end">
-            <div><Label>Código</Label><Input value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} /></div>
-            <div><Label>Descripción</Label><Input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} /></div>
-            <div><Label>Monto</Label><Input type="number" min={0} step="0.01" value={form.monto} onChange={(e) => setForm({ ...form, monto: Number(e.target.value) })} /></div>
-            <Button onClick={() => form.codigo.trim() && create.mutate()}><Plus className="h-4 w-4 mr-1" />Agregar</Button>
-          </div>
-
-          <Table><TableHeader><TableRow><TableHead>Código</TableHead><TableHead>Descripción</TableHead><TableHead className="w-40 text-right">Monto</TableHead><TableHead></TableHead></TableRow></TableHeader>
-            <TableBody>
-              {data.map((n: any) => (
-                <TableRow key={n.id}>
-                  <TableCell className="font-mono">{n.codigo}</TableCell>
-                  <TableCell>{n.descripcion}</TableCell>
-                  <TableCell className="text-right">
-                    <Input
-                      type="number" min={0} step="0.01"
-                      className="h-8 text-right"
-                      defaultValue={n.monto}
-                      onBlur={(e) => {
-                        const v = Number(e.target.value);
-                        if (v !== Number(n.monto)) upd.mutate({ id: n.id, monto: v });
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button size="icon" variant="ghost" onClick={() => confirm("¿Eliminar?") && del.mutate(n.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {data.length === 0 && (
-                <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">Sin códigos cargados.</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </>
-      )}
-    </CardContent></Card>
   );
 }

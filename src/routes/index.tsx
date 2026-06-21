@@ -4,7 +4,7 @@ import { KioskShell, BigOptionButton } from "@/components/KioskShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
+import { createArrival } from "@/lib/gestion/data.server";
 import { CheckCircle2, CalendarCheck2, Siren, UserRound, Sparkles, CreditCard, Wallet, HelpCircle } from "lucide-react";
 import logo from "@/assets/maycenter-logo.png";
 
@@ -208,21 +208,23 @@ function KioskPage() {
       if (Object.keys(e).length) return;
 
       setSaving(true);
-      const { error } = await supabase.from("arrivals").insert({
-        tipo_llegada: tipoLlegada,
-        tipo_paciente: tipoPaciente,
-        tipo_atencion: tipoAtencion,
-        cobertura: tipoAtencion === "Obra social" ? cobertura : "Particular",
-        nombre_apellido: nombre.trim(),
-        dni: dniClean,
-        estado: "Pendiente",
-      });
-      setSaving(false);
-      if (error) {
+      try {
+        await createArrival({
+          data: {
+            tipoLlegada,
+            tipoPaciente,
+            tipoAtencion,
+            cobertura: tipoAtencion === "Obra social" ? cobertura : "Particular",
+            nombreApellido: nombre.trim(),
+            dni: dniClean,
+          },
+        });
+        setSaving(false);
+        setStep("ok");
+      } catch {
+        setSaving(false);
         setErrors({ dni: "No pudimos registrar tu llegada. Intentá nuevamente." });
-        return;
       }
-      setStep("ok");
     };
 
     return (

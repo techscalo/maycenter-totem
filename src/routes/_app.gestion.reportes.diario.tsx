@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
+import { listSucursales, listPrestaciones } from "@/lib/gestion/data.server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,22 +35,20 @@ function ReporteDiarioPage() {
 
   const { data: sucursales } = useQuery({
     queryKey: ["sucursales"],
-    queryFn: async () => (await supabase.from("sucursales").select("id, nombre").order("nombre")).data ?? [],
+    queryFn: () => listSucursales(),
   });
 
   const { data: rows } = useQuery({
     queryKey: ["reporte-diario", fecha, sucursalId],
-    queryFn: async () => {
-      let q = supabase
-        .from("prestaciones")
-        .select("fecha, paciente, dni, cantidad, monto, monto_usd, codigo_manual, descripcion_manual, nomencladores(codigo, descripcion), obras_sociales(nombre), odontologos(nombre, numero_od), pisos(nombre), sucursales(nombre)")
-        .eq("fecha", fecha)
-        .order("created_at", { ascending: true });
-      if (sucursalId !== "all") q = q.eq("sucursal_id", sucursalId);
-      const { data, error } = await q;
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryFn: () =>
+      listPrestaciones({
+        data: {
+          desde: fecha,
+          hasta: fecha,
+          ...(sucursalId !== "all" ? { sucursalId } : {}),
+          limit: 2000,
+        },
+      }),
   });
 
   const grupos = useMemo(() => {
