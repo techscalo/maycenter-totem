@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
+import faviconUrl from "@/assets/maycenter-logo.png";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -73,24 +74,20 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Maycenter Welcome is a web application designed for dental clinic reception kiosks." },
+      { title: "Maycenter · Gestión clínica" },
+      { name: "description", content: "Sistema de gestión y tótem de recepción de la clínica odontológica Maycenter." },
       { name: "author", content: "Maycenter" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Maycenter Welcome is a web application designed for dental clinic reception kiosks." },
+      { property: "og:title", content: "Maycenter · Gestión clínica" },
+      { property: "og:description", content: "Sistema de gestión y tótem de recepción de la clínica odontológica Maycenter." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
-      { name: "twitter:title", content: "Lovable App" },
-      { name: "twitter:description", content: "Maycenter Welcome is a web application designed for dental clinic reception kiosks." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/0cfc2464-df81-4085-be86-740e13c91b3b/id-preview-8b786371--abb2eb4d-42a5-474d-b519-1656dfed0f2f.lovable.app-1778531764869.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/0cfc2464-df81-4085-be86-740e13c91b3b/id-preview-8b786371--abb2eb4d-42a5-474d-b519-1656dfed0f2f.lovable.app-1778531764869.png" },
+      { name: "twitter:title", content: "Maycenter · Gestión clínica" },
+      { name: "twitter:description", content: "Sistema de gestión y tótem de recepción de la clínica odontológica Maycenter." },
     ],
     links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
+      { rel: "stylesheet", href: appCss },
+      { rel: "icon", type: "image/png", href: faviconUrl },
+      { rel: "apple-touch-icon", href: faviconUrl },
     ],
   }),
   shellComponent: RootShell,

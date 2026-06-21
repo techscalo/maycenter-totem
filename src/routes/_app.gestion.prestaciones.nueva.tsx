@@ -1,13 +1,23 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useUserContext } from "@/lib/gestion/use-auth";
+import { useClinicaActiva } from "@/lib/gestion/clinica";
+import {
+  listSucursales,
+  listPisos,
+  listOdontologos,
+  listObrasSociales,
+  listNomencladores,
+  listServiciosParticulares,
+  createAtencion,
+} from "@/lib/gestion/data.server";
 
 export const Route = createFileRoute("/_app/gestion/prestaciones/nueva")({
   component: NuevaPrestacion,
@@ -17,7 +27,31 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-const emptyForm = (sucursalDefault: string) => ({
+type LineItem = {
+  key: string;
+  nomencladorId: string;
+  servicioParticularId: string;
+  codigoManual: string;
+  descripcionManual: string;
+  cantidad: number;
+  monto: number;
+  montoUsd: string | number;
+  cotizacionUsd: string | number;
+};
+
+const emptyLine = (): LineItem => ({
+  key: crypto.randomUUID(),
+  nomencladorId: "",
+  servicioParticularId: "",
+  codigoManual: "",
+  descripcionManual: "",
+  cantidad: 1,
+  monto: 0,
+  montoUsd: "",
+  cotizacionUsd: "",
+});
+
+const emptyHeader = (sucursalDefault: string) => ({
   fecha: todayISO(),
   paciente: "",
   dni: "",
@@ -25,258 +59,478 @@ const emptyForm = (sucursalDefault: string) => ({
   obra_social_id: "",
   piso_id: "",
   odontologo_id: "",
-  nomenclador_id: "",
-  codigo_manual: "",
-  descripcion_manual: "",
-  cantidad: 1,
-  monto: 0,
-  monto_usd: "" as string | number,
-  cotizacion_usd: "" as string | number,
+  codigo_consulta: "",
+  primera_vez: false,
   observaciones: "",
 });
+
+const sel =
+  "flex h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 function NuevaPrestacion() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { profile, user } = useUserContext();
-  const [form, setForm] = useState(emptyForm(""));
+  const { profile } = useUserContext();
+  const [clinicaActiva] = useClinicaActiva();
+  const [header, setHeader] = useState(emptyHeader(""));
+  const [items, setItems] = useState<LineItem[]>([emptyLine()]);
 
   const { data: sucursales = [] } = useQuery({
     queryKey: ["sucursales"],
-    queryFn: async () => (await supabase.from("sucursales").select("*").order("nombre")).data ?? [],
+    queryFn: () => listSucursales(),
   });
   const { data: obras = [] } = useQuery({
     queryKey: ["obras_sociales_activas"],
-    queryFn: async () => (await supabase.from("obras_sociales").select("*").eq("activa", true).order("nombre")).data ?? [],
+    queryFn: async () => (await listObrasSociales()).filter((o) => o.activa),
   });
   const { data: pisos = [] } = useQuery({
-    queryKey: ["pisos", form.sucursal_id],
-    enabled: !!form.sucursal_id,
-    queryFn: async () => (await supabase.from("pisos").select("*").eq("sucursal_id", form.sucursal_id).order("nombre")).data ?? [],
+    queryKey: ["pisos", header.sucursal_id],
+    enabled: !!header.sucursal_id,
+    queryFn: () => listPisos({ data: { sucursalId: header.sucursal_id } }),
   });
   const { data: odontologos = [] } = useQuery({
-    queryKey: ["odontologos", form.sucursal_id, form.piso_id],
-    enabled: !!form.sucursal_id,
-    queryFn: async () => {
-      let q = supabase.from("odontologos").select("*").eq("sucursal_id", form.sucursal_id).eq("activo", true);
-      if (form.piso_id) q = q.eq("piso_id", form.piso_id);
-      return (await q.order("nombre")).data ?? [];
-    },
-  });
-  const { data: nomencladores = [] } = useQuery({
-    queryKey: ["nomencladores", form.obra_social_id],
-    enabled: !!form.obra_social_id,
-    queryFn: async () => (await supabase.from("nomencladores").select("*").eq("obra_social_id", form.obra_social_id).eq("activo", true).order("codigo")).data ?? [],
+    queryKey: ["odontologos", header.sucursal_id, header.piso_id],
+    enabled: !!header.sucursal_id,
+    queryFn: () =>
+      listOdontologos({
+        data: {
+          sucursalId: header.sucursal_id,
+          ...(header.piso_id ? { pisoId: header.piso_id } : {}),
+          soloActivos: true,
+        },
+      }),
   });
 
   const selectedObra: any = useMemo(
-    () => obras.find((o: any) => o.id === form.obra_social_id),
-    [obras, form.obra_social_id],
+    () => obras.find((o: any) => o.id === header.obra_social_id),
+    [obras, header.obra_social_id],
   );
-  const isParticular = !!selectedObra?.es_particular;
+  const isParticular = !!selectedObra?.esParticular;
 
-  // Sucursal por defecto desde el perfil
+  const { data: nomencladores = [] } = useQuery({
+    queryKey: ["nomencladores", header.obra_social_id],
+    enabled: !!header.obra_social_id && !isParticular,
+    queryFn: () => listNomencladores({ data: { obraSocialId: header.obra_social_id } }),
+  });
+  const { data: servicios = [] } = useQuery({
+    queryKey: ["servicios_particulares"],
+    enabled: isParticular,
+    queryFn: () => listServiciosParticulares(),
+  });
+
+  // Sucursal por defecto: clínica activa elegida > sucursal del perfil > única sucursal
   useEffect(() => {
-    if (!form.sucursal_id && profile?.sucursal_id) {
-      setForm((f) => ({ ...f, sucursal_id: profile.sucursal_id! }));
-    } else if (!form.sucursal_id && sucursales.length === 1) {
-      setForm((f) => ({ ...f, sucursal_id: (sucursales[0] as any).id }));
+    if (header.sucursal_id) return;
+    if (clinicaActiva) {
+      setHeader((h) => ({ ...h, sucursal_id: clinicaActiva }));
+    } else if (profile?.sucursalId) {
+      setHeader((h) => ({ ...h, sucursal_id: profile.sucursalId! }));
+    } else if (sucursales.length === 1) {
+      setHeader((h) => ({ ...h, sucursal_id: (sucursales[0] as any).id }));
     }
-  }, [profile?.sucursal_id, sucursales, form.sucursal_id]);
+  }, [clinicaActiva, profile?.sucursalId, sucursales, header.sucursal_id]);
 
-  // Autocompletar monto al elegir nomenclador
-  const onNomencladorChange = (id: string) => {
+  const patchItem = (key: string, patch: Partial<LineItem>) =>
+    setItems((arr) => arr.map((it) => (it.key === key ? { ...it, ...patch } : it)));
+
+  const onNomencladorChange = (key: string, id: string) => {
     const nom: any = nomencladores.find((n: any) => n.id === id);
-    setForm((f) => ({
-      ...f,
-      nomenclador_id: id,
-      monto: nom ? Number(nom.monto) : f.monto,
-    }));
+    patchItem(key, { nomencladorId: id, monto: nom ? Number(nom.monto) : 0 });
+  };
+
+  const onServicioChange = (key: string, id: string) => {
+    const s: any = servicios.find((x: any) => x.id === id);
+    patchItem(key, { servicioParticularId: id, montoUsd: s ? Number(s.precioUsd) : "" });
   };
 
   const onObraChange = (id: string) => {
-    const o: any = obras.find((x: any) => x.id === id);
-    setForm((f) => ({
-      ...f,
-      obra_social_id: id,
-      nomenclador_id: "",
-      monto: o?.es_particular ? 0 : f.monto,
-    }));
+    setHeader((h) => ({ ...h, obra_social_id: id }));
+    setItems([emptyLine()]); // el tipo de línea cambia según particular o no
   };
 
-  const saveMut = useMutation({
-    mutationFn: async (andAnother: boolean) => {
-      if (!form.paciente.trim()) throw new Error("Ingresá el nombre del paciente");
-      if (!form.dni.trim()) throw new Error("Ingresá el DNI");
-      if (!form.sucursal_id) throw new Error("Elegí sucursal");
-      if (!form.obra_social_id) throw new Error("Elegí obra social");
-      if (!form.odontologo_id) throw new Error("Elegí odontólogo");
-      if (!isParticular && !form.nomenclador_id && !form.codigo_manual.trim()) {
-        throw new Error("Elegí un código del nomenclador o cargá un código manual");
-      }
-      if (Number(form.monto) < 0) throw new Error("Monto inválido");
+  const totalArs = items.reduce((s, it) => s + Number(it.monto || 0) * (it.cantidad || 1), 0);
+  const totalUsd = items.reduce((s, it) => s + Number(it.montoUsd || 0) * (it.cantidad || 1), 0);
 
-      const payload: any = {
-        fecha: form.fecha,
-        paciente: form.paciente.trim(),
-        dni: form.dni.trim(),
-        sucursal_id: form.sucursal_id,
-        obra_social_id: form.obra_social_id,
-        piso_id: form.piso_id || null,
-        odontologo_id: form.odontologo_id,
-        nomenclador_id: form.nomenclador_id || null,
-        codigo_manual: form.codigo_manual.trim() || null,
-        descripcion_manual: form.descripcion_manual.trim() || null,
-        cantidad: Number(form.cantidad) || 1,
-        monto: Number(form.monto) || 0,
-        monto_usd: form.monto_usd === "" ? null : Number(form.monto_usd),
-        cotizacion_usd: form.cotizacion_usd === "" ? null : Number(form.cotizacion_usd),
-        observaciones: form.observaciones.trim() || null,
-        created_by: user?.id ?? null,
-      };
-      const { error } = await supabase.from("prestaciones").insert(payload);
-      if (error) throw error;
-      return andAnother;
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      if (!header.paciente.trim()) throw new Error("Ingresá el nombre del paciente");
+      if (!header.dni.trim()) throw new Error("Ingresá el DNI");
+      if (!header.sucursal_id) throw new Error("Elegí sucursal");
+      if (!header.obra_social_id) throw new Error("Elegí obra social");
+      if (!header.odontologo_id) throw new Error("Elegí odontólogo");
+
+      const validItems = items.filter(
+        (it) =>
+          it.nomencladorId ||
+          it.servicioParticularId ||
+          it.codigoManual.trim() ||
+          it.descripcionManual.trim(),
+      );
+      if (validItems.length === 0) throw new Error("Agregá al menos una prestación");
+
+      return createAtencion({
+        data: {
+          fecha: header.fecha,
+          paciente: header.paciente,
+          dni: header.dni,
+          sucursalId: header.sucursal_id,
+          obraSocialId: header.obra_social_id,
+          pisoId: header.piso_id || null,
+          odontologoId: header.odontologo_id,
+          codigoConsulta: header.codigo_consulta || null,
+          primeraVez: header.primera_vez,
+          observaciones: header.observaciones || null,
+          items: validItems.map((it) => ({
+            nomencladorId: it.nomencladorId || null,
+            servicioParticularId: it.servicioParticularId || null,
+            codigoManual: it.codigoManual || null,
+            descripcionManual: it.descripcionManual || null,
+            cantidad: Number(it.cantidad) || 1,
+            monto: Number(it.monto) || 0,
+            montoUsd: it.montoUsd === "" ? null : Number(it.montoUsd),
+            cotizacionUsd: it.cotizacionUsd === "" ? null : Number(it.cotizacionUsd),
+          })),
+        },
+      });
     },
-    onSuccess: (andAnother) => {
-      toast.success("Prestación guardada");
+    onSuccess: () => {
+      toast.success("Atención guardada");
       qc.invalidateQueries({ queryKey: ["prestaciones"] });
       qc.invalidateQueries({ queryKey: ["gestion-home-stats"] });
-      if (andAnother) {
-        setForm((f) => ({
-          ...emptyForm(f.sucursal_id),
-          obra_social_id: f.obra_social_id,
-          piso_id: f.piso_id,
-          odontologo_id: f.odontologo_id,
-        }));
-      } else {
-        navigate({ to: "/gestion/prestaciones" });
-      }
+      navigate({ to: "/gestion/prestaciones" });
     },
     onError: (e) => toast.error((e as Error).message),
   });
 
-  const sel = "flex h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
-
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Nueva prestación</h1>
-        <p className="text-sm text-muted-foreground">Cargá la atención lo más rápido posible.</p>
+        <h1 className="text-2xl font-bold">Nueva atención</h1>
+        <p className="text-sm text-muted-foreground">
+          Cargá los datos del paciente y todas sus prestaciones.
+        </p>
       </div>
 
+      {/* Cabecera */}
       <Card>
         <CardContent className="p-6 space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <Label>Fecha</Label>
-              <Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
+              <Input
+                type="date"
+                value={header.fecha}
+                onChange={(e) => setHeader({ ...header, fecha: e.target.value })}
+              />
             </div>
             <div className="md:col-span-2">
               <Label>Paciente</Label>
-              <Input value={form.paciente} onChange={(e) => setForm({ ...form, paciente: e.target.value })} placeholder="Nombre y apellido" autoFocus />
+              <Input
+                value={header.paciente}
+                onChange={(e) => setHeader({ ...header, paciente: e.target.value })}
+                placeholder="Nombre y apellido"
+                autoFocus
+              />
             </div>
+
             <div>
               <Label>DNI</Label>
-              <Input inputMode="numeric" value={form.dni} onChange={(e) => setForm({ ...form, dni: e.target.value.replace(/\D/g, "") })} />
+              <Input
+                inputMode="numeric"
+                value={header.dni}
+                onChange={(e) => setHeader({ ...header, dni: e.target.value.replace(/\D/g, "") })}
+              />
+            </div>
+            <div>
+              <Label>Código de consulta</Label>
+              <Input
+                value={header.codigo_consulta}
+                onChange={(e) => setHeader({ ...header, codigo_consulta: e.target.value })}
+                placeholder="Opcional"
+              />
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 h-10 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={header.primera_vez}
+                  onChange={(e) => setHeader({ ...header, primera_vez: e.target.checked })}
+                />
+                <span className="text-sm">Primera vez (paciente nuevo)</span>
+              </label>
             </div>
 
             <div>
               <Label>Sucursal</Label>
-              <select className={sel} value={form.sucursal_id} onChange={(e) => setForm({ ...form, sucursal_id: e.target.value, piso_id: "", odontologo_id: "" })}>
+              <select
+                className={sel}
+                value={header.sucursal_id}
+                onChange={(e) =>
+                  setHeader({ ...header, sucursal_id: e.target.value, piso_id: "", odontologo_id: "" })
+                }
+              >
                 <option value="">Elegir…</option>
-                {sucursales.map((s: any) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                {sucursales.map((s: any) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nombre}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
               <Label>Piso</Label>
-              <select className={sel} value={form.piso_id} disabled={!form.sucursal_id} onChange={(e) => setForm({ ...form, piso_id: e.target.value, odontologo_id: "" })}>
-                <option value="">{form.sucursal_id ? "Elegir…" : "Elegí sucursal primero"}</option>
-                {pisos.map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              <select
+                className={sel}
+                value={header.piso_id}
+                disabled={!header.sucursal_id}
+                onChange={(e) => setHeader({ ...header, piso_id: e.target.value, odontologo_id: "" })}
+              >
+                <option value="">{header.sucursal_id ? "Elegir…" : "Elegí sucursal primero"}</option>
+                {pisos.map((p: any) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre}
+                  </option>
+                ))}
               </select>
             </div>
-
             <div>
               <Label>Odontólogo</Label>
-              <select className={sel} value={form.odontologo_id} disabled={!form.sucursal_id} onChange={(e) => setForm({ ...form, odontologo_id: e.target.value })}>
+              <select
+                className={sel}
+                value={header.odontologo_id}
+                disabled={!header.sucursal_id}
+                onChange={(e) => setHeader({ ...header, odontologo_id: e.target.value })}
+              >
                 <option value="">Elegir…</option>
-                {odontologos.map((o: any) => <option key={o.id} value={o.id}>{o.nombre}{o.numero_od ? ` (${o.numero_od})` : ""}</option>)}
+                {odontologos.map((o: any) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nombre}
+                    {o.numeroOd ? ` (${o.numeroOd})` : ""}
+                  </option>
+                ))}
               </select>
             </div>
 
-            <div className="md:col-span-2">
+            <div className="md:col-span-3">
               <Label>Obra social</Label>
-              <select className={sel} value={form.obra_social_id} onChange={(e) => onObraChange(e.target.value)}>
+              <select className={sel} value={header.obra_social_id} onChange={(e) => onObraChange(e.target.value)}>
                 <option value="">Elegir…</option>
-                {obras.map((o: any) => <option key={o.id} value={o.id}>{o.nombre}{o.es_particular ? " (particular)" : ""}</option>)}
+                {obras.map((o: any) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nombre}
+                    {o.esParticular ? " (particular)" : ""}
+                  </option>
+                ))}
               </select>
-            </div>
-
-            {!isParticular ? (
-              <div className="md:col-span-3">
-                <Label>Código de prestación</Label>
-                <select className={sel} value={form.nomenclador_id} disabled={!form.obra_social_id} onChange={(e) => onNomencladorChange(e.target.value)}>
-                  <option value="">{form.obra_social_id ? (nomencladores.length === 0 ? "Sin códigos cargados — usá manual" : "Elegir código…") : "Elegí obra social primero"}</option>
-                  {nomencladores.map((n: any) => (
-                    <option key={n.id} value={n.id}>{n.codigo} — {n.descripcion} (${Number(n.monto).toLocaleString("es-AR")})</option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <>
-                <div>
-                  <Label>Código (manual)</Label>
-                  <Input value={form.codigo_manual} onChange={(e) => setForm({ ...form, codigo_manual: e.target.value })} placeholder="Opcional" />
-                </div>
-                <div className="md:col-span-2">
-                  <Label>Descripción</Label>
-                  <Input value={form.descripcion_manual} onChange={(e) => setForm({ ...form, descripcion_manual: e.target.value })} placeholder="Prestación realizada" />
-                </div>
-              </>
-            )}
-
-            {!isParticular && !form.nomenclador_id && form.obra_social_id && (
-              <>
-                <div>
-                  <Label>Código manual</Label>
-                  <Input value={form.codigo_manual} onChange={(e) => setForm({ ...form, codigo_manual: e.target.value })} placeholder="Opcional" />
-                </div>
-                <div className="md:col-span-2">
-                  <Label>Descripción manual</Label>
-                  <Input value={form.descripcion_manual} onChange={(e) => setForm({ ...form, descripcion_manual: e.target.value })} placeholder="Opcional" />
-                </div>
-              </>
-            )}
-
-            <div>
-              <Label>Cantidad</Label>
-              <Input type="number" min={1} value={form.cantidad} onChange={(e) => setForm({ ...form, cantidad: Number(e.target.value) || 1 })} />
-            </div>
-            <div>
-              <Label>Monto ARS</Label>
-              <Input type="number" min={0} step="0.01" value={form.monto} onChange={(e) => setForm({ ...form, monto: Number(e.target.value) || 0 })} />
-            </div>
-            <div>
-              <Label>Monto USD <span className="text-muted-foreground font-normal">(opcional)</span></Label>
-              <Input type="number" min={0} step="0.01" value={form.monto_usd} onChange={(e) => setForm({ ...form, monto_usd: e.target.value })} />
-            </div>
-
-            <div>
-              <Label>Cotización USD <span className="text-muted-foreground font-normal">(opcional)</span></Label>
-              <Input type="number" min={0} step="0.01" value={form.cotizacion_usd} onChange={(e) => setForm({ ...form, cotizacion_usd: e.target.value })} />
-            </div>
-            <div className="md:col-span-2">
-              <Label>Observaciones</Label>
-              <Input value={form.observaciones} onChange={(e) => setForm({ ...form, observaciones: e.target.value })} />
             </div>
           </div>
+        </CardContent>
+      </Card>
 
-          <div className="flex flex-wrap gap-3 pt-2 border-t">
-            <Button variant="outline" onClick={() => navigate({ to: "/gestion/prestaciones" })}>Cancelar</Button>
-            <Button variant="secondary" onClick={() => saveMut.mutate(true)} disabled={saveMut.isPending}>Guardar y cargar otra</Button>
-            <Button onClick={() => saveMut.mutate(false)} disabled={saveMut.isPending}>
-              {saveMut.isPending ? "Guardando…" : "Guardar"}
+      {/* Prestaciones (líneas) */}
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold">Prestaciones</h2>
+              <p className="text-xs text-muted-foreground">
+                {isParticular
+                  ? "Servicios particulares (precio en USD)."
+                  : header.obra_social_id
+                    ? "Códigos del nomenclador (precio en ARS)."
+                    : "Elegí una obra social para cargar prestaciones."}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!header.obra_social_id}
+              onClick={() => setItems((arr) => [...arr, emptyLine()])}
+            >
+              <Plus className="h-4 w-4 mr-1" /> Agregar línea
             </Button>
+          </div>
+
+          {items.map((it, idx) => (
+            <div key={it.key} className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">Línea {idx + 1}</span>
+                {items.length > 1 && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setItems((arr) => arr.filter((x) => x.key !== it.key))}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                )}
+              </div>
+
+              {!header.obra_social_id ? (
+                <p className="text-sm text-muted-foreground">Elegí obra social primero.</p>
+              ) : isParticular ? (
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                  <div className="md:col-span-6">
+                    <Label>Servicio particular</Label>
+                    <select
+                      className={sel}
+                      value={it.servicioParticularId}
+                      onChange={(e) => onServicioChange(it.key, e.target.value)}
+                    >
+                      <option value="">
+                        {servicios.length === 0 ? "Sin servicios — usá manual" : "Elegir servicio…"}
+                      </option>
+                      {servicios.map((s: any) => (
+                        <option key={s.id} value={s.id}>
+                          {s.codigo ? `${s.codigo} — ` : ""}
+                          {s.descripcion} (U$D {Number(s.precioUsd).toLocaleString("es-AR")})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Cantidad</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={it.cantidad}
+                      onChange={(e) => patchItem(it.key, { cantidad: Number(e.target.value) || 1 })}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Monto USD</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={it.montoUsd}
+                      onChange={(e) => patchItem(it.key, { montoUsd: e.target.value })}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Cotización</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={it.cotizacionUsd}
+                      onChange={(e) => patchItem(it.key, { cotizacionUsd: e.target.value })}
+                      placeholder="ARS/USD"
+                    />
+                  </div>
+                  {!it.servicioParticularId && (
+                    <div className="md:col-span-12 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Label>Código (manual)</Label>
+                        <Input
+                          value={it.codigoManual}
+                          onChange={(e) => patchItem(it.key, { codigoManual: e.target.value })}
+                          placeholder="Opcional"
+                        />
+                      </div>
+                      <div>
+                        <Label>Descripción (manual)</Label>
+                        <Input
+                          value={it.descripcionManual}
+                          onChange={(e) => patchItem(it.key, { descripcionManual: e.target.value })}
+                          placeholder="Servicio realizado"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                  <div className="md:col-span-7">
+                    <Label>Código de prestación</Label>
+                    <select
+                      className={sel}
+                      value={it.nomencladorId}
+                      onChange={(e) => onNomencladorChange(it.key, e.target.value)}
+                    >
+                      <option value="">
+                        {nomencladores.length === 0 ? "Sin códigos — usá manual" : "Elegir código…"}
+                      </option>
+                      {nomencladores.map((n: any) => (
+                        <option key={n.id} value={n.id}>
+                          {n.codigo} — {n.descripcion} (${Number(n.monto).toLocaleString("es-AR")})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Cantidad</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={it.cantidad}
+                      onChange={(e) => patchItem(it.key, { cantidad: Number(e.target.value) || 1 })}
+                    />
+                  </div>
+                  <div className="md:col-span-3">
+                    <Label>Monto ARS</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={it.monto}
+                      onChange={(e) => patchItem(it.key, { monto: Number(e.target.value) || 0 })}
+                    />
+                  </div>
+                  {!it.nomencladorId && (
+                    <div className="md:col-span-12 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Label>Código (manual)</Label>
+                        <Input
+                          value={it.codigoManual}
+                          onChange={(e) => patchItem(it.key, { codigoManual: e.target.value })}
+                          placeholder="Opcional"
+                        />
+                      </div>
+                      <div>
+                        <Label>Descripción (manual)</Label>
+                        <Input
+                          value={it.descripcionManual}
+                          onChange={(e) => patchItem(it.key, { descripcionManual: e.target.value })}
+                          placeholder="Prestación realizada"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+
+          <div className="md:col-span-3">
+            <Label>Observaciones</Label>
+            <Input
+              value={header.observaciones}
+              onChange={(e) => setHeader({ ...header, observaciones: e.target.value })}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t text-sm">
+            <div className="text-muted-foreground">
+              Total: <b className="text-foreground">${totalArs.toLocaleString("es-AR")}</b>
+              {totalUsd > 0 && (
+                <>
+                  {" · "}
+                  <b className="text-foreground">U$D {totalUsd.toLocaleString("es-AR")}</b>
+                </>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => navigate({ to: "/gestion/prestaciones" })}>
+                Cancelar
+              </Button>
+              <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>
+                {saveMut.isPending ? "Guardando…" : "Guardar atención"}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

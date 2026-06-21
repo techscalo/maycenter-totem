@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { listPrestaciones } from "@/lib/gestion/data.server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ListPlus, Table2, Settings, Wallet, Users, Activity } from "lucide-react";
 import { useUserContext } from "@/lib/gestion/use-auth";
@@ -15,14 +15,8 @@ function HomePage() {
   const { data: stats } = useQuery({
     queryKey: ["gestion-home-stats"],
     queryFn: async () => {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const isoToday = today.toISOString().slice(0, 10);
-      const { data } = await supabase
-        .from("prestaciones")
-        .select("monto, monto_usd, dni")
-        .gte("fecha", isoToday);
-      const rows = data ?? [];
+      const isoToday = new Date().toISOString().slice(0, 10);
+      const rows = await listPrestaciones({ data: { desde: isoToday, hasta: isoToday } });
       const totalArs = rows.reduce((s, r) => s + Number(r.monto || 0), 0);
       const totalUsd = rows.reduce((s, r) => s + Number(r.monto_usd || 0), 0);
       const pacientes = new Set(rows.map((r) => r.dni)).size;

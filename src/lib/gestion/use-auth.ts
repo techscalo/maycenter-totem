@@ -1,57 +1,31 @@
-import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+import { useSession } from "@/lib/auth-client";
+import { getUserContext, type AppRole } from "./auth-server";
 
-export type AppRole = "admin" | "administrativo" | "direccion" | "odontologo";
-
-export function useSupabaseUser() {
-  const [user, setUser] = useState<User | null | undefined>(undefined);
-
-  useEffect(() => {
-    let mounted = true;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (mounted) setUser(session?.user ?? null);
-    });
-    supabase.auth.getSession().then(({ data }) => {
-      if (mounted) setUser(data.session?.user ?? null);
-    });
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  return user; // undefined = loading, null = no user
-}
+export type { AppRole };
 
 export function useUserContext() {
-  const user = useSupabaseUser();
+  const { data: session, isPending } = useSession();
 
   const query = useQuery({
-    enabled: !!user,
-    queryKey: ["user-context", user?.id],
-    queryFn: async () => {
-      if (!user) return null;
-      const [{ data: profile }, { data: roles }] = await Promise.all([
-        supabase.from("profiles").select("*, sucursales(id, nombre)").eq("user_id", user.id).maybeSingle(),
-        supabase.from("user_roles").select("role").eq("user_id", user.id),
-      ]);
-      return {
-        profile,
-        roles: (roles ?? []).map((r) => r.role as AppRole),
-      };
-    },
+    enabled: !!session?.user,
+    queryKey: ["user-context", session?.user?.id],
+    queryFn: () => getUserContext(),
   });
 
-  const roles = query.data?.roles ?? [];
+  const ctx = query.data;
+  const roles = ctx?.roles ?? [];
+
+  // undefined = cargando, null = sin usuario
+  const user = isPending ? undefined : (session?.user ?? null);
+
   return {
     user,
-    profile: query.data?.profile ?? null,
+    profile: ctx?.profile ?? null,
     roles,
     isAdmin: roles.includes("admin"),
     isDireccion: roles.includes("direccion"),
     isStaff: roles.includes("admin") || roles.includes("direccion"),
-    isLoading: user === undefined || query.isLoading,
+    isLoading: isPending || (!!session?.user && query.isLoading),
   };
 }

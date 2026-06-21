@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { listSucursales, listPrestaciones } from "@/lib/gestion/data.server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,25 +43,20 @@ function DashboardPage() {
 
   const { data: sucursales } = useQuery({
     queryKey: ["sucursales"],
-    queryFn: async () => {
-      const { data } = await supabase.from("sucursales").select("id, nombre").order("nombre");
-      return data ?? [];
-    },
+    queryFn: () => listSucursales(),
   });
 
   const { data: rows } = useQuery({
     queryKey: ["dashboard-prestaciones", desde, hasta, sucursalId],
-    queryFn: async () => {
-      let q = supabase
-        .from("prestaciones")
-        .select("fecha, monto, monto_usd, dni, sucursal_id, obra_social_id, odontologo_id, obras_sociales(nombre), odontologos(nombre), sucursales(nombre)")
-        .gte("fecha", desde)
-        .lte("fecha", hasta);
-      if (sucursalId !== "all") q = q.eq("sucursal_id", sucursalId);
-      const { data, error } = await q;
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryFn: () =>
+      listPrestaciones({
+        data: {
+          desde,
+          hasta,
+          ...(sucursalId !== "all" ? { sucursalId } : {}),
+          limit: 2000,
+        },
+      }),
   });
 
   const kpis = useMemo(() => {

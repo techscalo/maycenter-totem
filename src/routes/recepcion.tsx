@@ -1,6 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useSession } from "@/lib/auth-client";
+import { listArrivals, updateArrivalEstado, archiveOldArrivals } from "@/lib/gestion/data.server";
 import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -16,8 +17,28 @@ export const Route = createFileRoute("/recepcion")({
       { name: "description", content: "Panel interno para gestionar las llegadas de pacientes." },
     ],
   }),
-  component: RecepcionPage,
+  component: RecepcionGuard,
 });
+
+function RecepcionGuard() {
+  const { data: session, isPending } = useSession();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isPending && !session?.user) navigate({ to: "/gestion/login" });
+  }, [isPending, session, navigate]);
+
+  if (isPending) {
+    return (
+      <div className="min-h-screen grid place-items-center text-muted-foreground text-sm">
+        Cargando…
+      </div>
+    );
+  }
+  if (!session?.user) return null;
+
+  return <RecepcionPage />;
+}
 
 type Arrival = {
   id: string;
@@ -93,22 +114,22 @@ function RecepcionPage() {
   const load = async () => {
     setLoading(true);
     const { from, to } = getRange(rango, desde, hasta);
-    let q = supabase.from("arrivals").select("*").order("created_at", { ascending: false });
-    if (from) q = q.gte("created_at", from.toISOString());
-    if (to) q = q.lte("created_at", to.toISOString());
-    if (rango === "todos") q = q.limit(500);
-    const { data } = await q;
+    const data = await listArrivals({
+      data: {
+        ...(from ? { from: from.toISOString() } : {}),
+        ...(to ? { to: to.toISOString() } : {}),
+        limit: 500,
+      },
+    });
     setItems((data as Arrival[]) ?? []);
     setLoading(false);
   };
 
   useEffect(() => {
     load();
-    const ch = supabase
-      .channel("arrivals_panel")
-      .on("postgres_changes", { event: "*", schema: "public", table: "arrivals" }, () => load())
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    // Neon no tiene realtime: refrescamos por polling cada 10s
+    const t = setInterval(load, 10000);
+    return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rango, desde, hasta]);
 
@@ -130,12 +151,13 @@ function RecepcionPage() {
   }), [items]);
 
   const updateEstado = async (id: string, estado: string) => {
-    await supabase.from("arrivals").update({ estado }).eq("id", id);
+    await updateArrivalEstado({ data: { id, estado } });
+    load();
   };
 
   const archiveOld = async () => {
     if (!confirm("¿Archivar (eliminar) todos los registros anteriores a hoy?")) return;
-    await supabase.from("arrivals").delete().lt("created_at", todayStartIso());
+    await archiveOldArrivals();
     load();
   };
 

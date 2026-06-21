@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, startOfMonth, endOfMonth } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
+import { listSucursales, listObrasSociales, listPrestaciones } from "@/lib/gestion/data.server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,37 +37,30 @@ function ReporteIomaPage() {
 
   const { data: sucursales } = useQuery({
     queryKey: ["sucursales"],
-    queryFn: async () => (await supabase.from("sucursales").select("id, nombre").order("nombre")).data ?? [],
+    queryFn: () => listSucursales(),
   });
 
   const { data: ioma } = useQuery({
     queryKey: ["obra-ioma"],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("obras_sociales")
-        .select("id, nombre")
-        .ilike("nombre", "%ioma%")
-        .maybeSingle();
-      return data;
+      const obras = await listObrasSociales();
+      return obras.find((o) => o.nombre.toLowerCase().includes("ioma")) ?? null;
     },
   });
 
   const { data: rows } = useQuery({
     enabled: !!ioma?.id,
     queryKey: ["reporte-ioma", desde, hasta, sucursalId, ioma?.id],
-    queryFn: async () => {
-      let q = supabase
-        .from("prestaciones")
-        .select("fecha, paciente, dni, cantidad, monto, codigo_manual, descripcion_manual, nomencladores(codigo, descripcion), odontologos(nombre, numero_od), pisos(nombre), sucursales(nombre)")
-        .eq("obra_social_id", ioma!.id)
-        .gte("fecha", desde)
-        .lte("fecha", hasta)
-        .order("fecha", { ascending: true });
-      if (sucursalId !== "all") q = q.eq("sucursal_id", sucursalId);
-      const { data, error } = await q;
-      if (error) throw error;
-      return data ?? [];
-    },
+    queryFn: () =>
+      listPrestaciones({
+        data: {
+          desde,
+          hasta,
+          obraSocialId: ioma!.id,
+          ...(sucursalId !== "all" ? { sucursalId } : {}),
+          limit: 2000,
+        },
+      }),
   });
 
   const total = useMemo(() => {

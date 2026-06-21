@@ -14,6 +14,8 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as GestionLoginRouteImport } from './routes/gestion.login'
 import { Route as AppGestionIndexRouteImport } from './routes/_app.gestion.index'
+import { Route as ApiAuthSplatRouteImport } from './routes/api.auth.$'
+import { Route as AppGestionOdontologosRouteImport } from './routes/_app.gestion.odontologos'
 import { Route as AppGestionDashboardRouteImport } from './routes/_app.gestion.dashboard'
 import { Route as AppGestionAdminRouteImport } from './routes/_app.gestion.admin'
 import { Route as AppGestionPrestacionesIndexRouteImport } from './routes/_app.gestion.prestaciones.index'
@@ -43,6 +45,16 @@ const GestionLoginRoute = GestionLoginRouteImport.update({
 const AppGestionIndexRoute = AppGestionIndexRouteImport.update({
   id: '/gestion/',
   path: '/gestion/',
+  getParentRoute: () => AppRoute,
+} as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppGestionOdontologosRoute = AppGestionOdontologosRouteImport.update({
+  id: '/gestion/odontologos',
+  path: '/gestion/odontologos',
   getParentRoute: () => AppRoute,
 } as any)
 const AppGestionDashboardRoute = AppGestionDashboardRouteImport.update({
@@ -85,6 +97,8 @@ export interface FileRoutesByFullPath {
   '/gestion/login': typeof GestionLoginRoute
   '/gestion/admin': typeof AppGestionAdminRoute
   '/gestion/dashboard': typeof AppGestionDashboardRoute
+  '/gestion/odontologos': typeof AppGestionOdontologosRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/gestion/': typeof AppGestionIndexRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/gestion/reportes/diario': typeof AppGestionReportesDiarioRoute
@@ -97,6 +111,8 @@ export interface FileRoutesByTo {
   '/gestion/login': typeof GestionLoginRoute
   '/gestion/admin': typeof AppGestionAdminRoute
   '/gestion/dashboard': typeof AppGestionDashboardRoute
+  '/gestion/odontologos': typeof AppGestionOdontologosRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/gestion': typeof AppGestionIndexRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/gestion/reportes/diario': typeof AppGestionReportesDiarioRoute
@@ -111,6 +127,8 @@ export interface FileRoutesById {
   '/gestion/login': typeof GestionLoginRoute
   '/_app/gestion/admin': typeof AppGestionAdminRoute
   '/_app/gestion/dashboard': typeof AppGestionDashboardRoute
+  '/_app/gestion/odontologos': typeof AppGestionOdontologosRoute
+  '/api/auth/$': typeof ApiAuthSplatRoute
   '/_app/gestion/': typeof AppGestionIndexRoute
   '/_app/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/_app/gestion/reportes/diario': typeof AppGestionReportesDiarioRoute
@@ -125,6 +143,8 @@ export interface FileRouteTypes {
     | '/gestion/login'
     | '/gestion/admin'
     | '/gestion/dashboard'
+    | '/gestion/odontologos'
+    | '/api/auth/$'
     | '/gestion/'
     | '/gestion/prestaciones/nueva'
     | '/gestion/reportes/diario'
@@ -137,6 +157,8 @@ export interface FileRouteTypes {
     | '/gestion/login'
     | '/gestion/admin'
     | '/gestion/dashboard'
+    | '/gestion/odontologos'
+    | '/api/auth/$'
     | '/gestion'
     | '/gestion/prestaciones/nueva'
     | '/gestion/reportes/diario'
@@ -150,6 +172,8 @@ export interface FileRouteTypes {
     | '/gestion/login'
     | '/_app/gestion/admin'
     | '/_app/gestion/dashboard'
+    | '/_app/gestion/odontologos'
+    | '/api/auth/$'
     | '/_app/gestion/'
     | '/_app/gestion/prestaciones/nueva'
     | '/_app/gestion/reportes/diario'
@@ -162,6 +186,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   RecepcionRoute: typeof RecepcionRoute
   GestionLoginRoute: typeof GestionLoginRoute
+  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -199,6 +224,20 @@ declare module '@tanstack/react-router' {
       path: '/gestion'
       fullPath: '/gestion/'
       preLoaderRoute: typeof AppGestionIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/gestion/odontologos': {
+      id: '/_app/gestion/odontologos'
+      path: '/gestion/odontologos'
+      fullPath: '/gestion/odontologos'
+      preLoaderRoute: typeof AppGestionOdontologosRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/gestion/dashboard': {
@@ -249,6 +288,7 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppGestionAdminRoute: typeof AppGestionAdminRoute
   AppGestionDashboardRoute: typeof AppGestionDashboardRoute
+  AppGestionOdontologosRoute: typeof AppGestionOdontologosRoute
   AppGestionIndexRoute: typeof AppGestionIndexRoute
   AppGestionPrestacionesNuevaRoute: typeof AppGestionPrestacionesNuevaRoute
   AppGestionReportesDiarioRoute: typeof AppGestionReportesDiarioRoute
@@ -259,6 +299,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppGestionAdminRoute: AppGestionAdminRoute,
   AppGestionDashboardRoute: AppGestionDashboardRoute,
+  AppGestionOdontologosRoute: AppGestionOdontologosRoute,
   AppGestionIndexRoute: AppGestionIndexRoute,
   AppGestionPrestacionesNuevaRoute: AppGestionPrestacionesNuevaRoute,
   AppGestionReportesDiarioRoute: AppGestionReportesDiarioRoute,
@@ -273,7 +314,18 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   RecepcionRoute: RecepcionRoute,
   GestionLoginRoute: GestionLoginRoute,
+  ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
