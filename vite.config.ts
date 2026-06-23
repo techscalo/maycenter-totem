@@ -13,6 +13,10 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 // wraps it as a Vercel Build Output API function. Locally/Cloudflare it stays on.
 export default defineConfig({
   cloudflare: process.env.VERCEL ? false : undefined,
+  // Without the Cloudflare plugin, Vite externalizes node_modules in the SSR build.
+  // The Vercel function runs from /var/task with no node_modules, so bundle everything
+  // into a self-contained server.js (matches what the Cloudflare worker build did).
+  vite: process.env.VERCEL ? { ssr: { noExternal: true } } : undefined,
   tanstackStart: {
     server: { entry: "server" },
   },
