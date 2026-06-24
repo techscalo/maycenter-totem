@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // Roles de la app (ex-Supabase app_role)
 export const appRole = pgEnum("app_role", [
@@ -100,15 +101,22 @@ export const nomencladores = pgTable(
     obraSocialId: uuid("obra_social_id")
       .notNull()
       .references(() => obrasSociales.id, { onDelete: "cascade" }),
+    // Plan dentro de la OS (ej. OSDE 2-310, Biomed RD superior). null = OS de precio único.
+    plan: text("plan"),
     codigo: text("codigo").notNull(),
     descripcion: text("descripcion").notNull(),
     monto: numeric("monto", { precision: 12, scale: 2 }).notNull().default("0"),
+    // Copago a cargo del paciente (solo OS con desglose O.S./Paciente, ej. Biomed). null = sin desglose.
+    montoPaciente: numeric("monto_paciente", { precision: 12, scale: 2 }),
     activo: boolean("activo").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    nomencladorOsCodigoUq: uniqueIndex("nomencladores_os_codigo_uq").on(
+    // coalesce(plan,'') para que la unicidad funcione también cuando plan es null
+    // (Postgres trata null != null en índices únicos por defecto).
+    nomencladorOsCodigoUq: uniqueIndex("nomencladores_os_plan_codigo_uq").on(
       t.obraSocialId,
+      sql`coalesce(${t.plan}, '')`,
       t.codigo,
     ),
     nomencladorOsIdx: index("idx_nomencladores_os").on(t.obraSocialId),

@@ -15,8 +15,10 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as GestionLoginRouteImport } from './routes/gestion.login'
 import { Route as AppGestionIndexRouteImport } from './routes/_app.gestion.index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api.auth.$'
+import { Route as AppGestionPreciosRouteImport } from './routes/_app.gestion.precios'
 import { Route as AppGestionOdontologosRouteImport } from './routes/_app.gestion.odontologos'
 import { Route as AppGestionDashboardRouteImport } from './routes/_app.gestion.dashboard'
+import { Route as AppGestionAyudaRouteImport } from './routes/_app.gestion.ayuda'
 import { Route as AppGestionAdminRouteImport } from './routes/_app.gestion.admin'
 import { Route as AppGestionPrestacionesIndexRouteImport } from './routes/_app.gestion.prestaciones.index'
 import { Route as AppGestionReportesIomaRouteImport } from './routes/_app.gestion.reportes.ioma'
@@ -52,6 +54,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppGestionPreciosRoute = AppGestionPreciosRouteImport.update({
+  id: '/gestion/precios',
+  path: '/gestion/precios',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppGestionOdontologosRoute = AppGestionOdontologosRouteImport.update({
   id: '/gestion/odontologos',
   path: '/gestion/odontologos',
@@ -60,6 +67,11 @@ const AppGestionOdontologosRoute = AppGestionOdontologosRouteImport.update({
 const AppGestionDashboardRoute = AppGestionDashboardRouteImport.update({
   id: '/gestion/dashboard',
   path: '/gestion/dashboard',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGestionAyudaRoute = AppGestionAyudaRouteImport.update({
+  id: '/gestion/ayuda',
+  path: '/gestion/ayuda',
   getParentRoute: () => AppRoute,
 } as any)
 const AppGestionAdminRoute = AppGestionAdminRouteImport.update({
@@ -96,8 +108,10 @@ export interface FileRoutesByFullPath {
   '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
   '/gestion/admin': typeof AppGestionAdminRoute
+  '/gestion/ayuda': typeof AppGestionAyudaRoute
   '/gestion/dashboard': typeof AppGestionDashboardRoute
   '/gestion/odontologos': typeof AppGestionOdontologosRoute
+  '/gestion/precios': typeof AppGestionPreciosRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/gestion/': typeof AppGestionIndexRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
@@ -110,8 +124,10 @@ export interface FileRoutesByTo {
   '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
   '/gestion/admin': typeof AppGestionAdminRoute
+  '/gestion/ayuda': typeof AppGestionAyudaRoute
   '/gestion/dashboard': typeof AppGestionDashboardRoute
   '/gestion/odontologos': typeof AppGestionOdontologosRoute
+  '/gestion/precios': typeof AppGestionPreciosRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/gestion': typeof AppGestionIndexRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
@@ -126,8 +142,10 @@ export interface FileRoutesById {
   '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
   '/_app/gestion/admin': typeof AppGestionAdminRoute
+  '/_app/gestion/ayuda': typeof AppGestionAyudaRoute
   '/_app/gestion/dashboard': typeof AppGestionDashboardRoute
   '/_app/gestion/odontologos': typeof AppGestionOdontologosRoute
+  '/_app/gestion/precios': typeof AppGestionPreciosRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_app/gestion/': typeof AppGestionIndexRoute
   '/_app/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
@@ -142,8 +160,10 @@ export interface FileRouteTypes {
     | '/recepcion'
     | '/gestion/login'
     | '/gestion/admin'
+    | '/gestion/ayuda'
     | '/gestion/dashboard'
     | '/gestion/odontologos'
+    | '/gestion/precios'
     | '/api/auth/$'
     | '/gestion/'
     | '/gestion/prestaciones/nueva'
@@ -156,8 +176,10 @@ export interface FileRouteTypes {
     | '/recepcion'
     | '/gestion/login'
     | '/gestion/admin'
+    | '/gestion/ayuda'
     | '/gestion/dashboard'
     | '/gestion/odontologos'
+    | '/gestion/precios'
     | '/api/auth/$'
     | '/gestion'
     | '/gestion/prestaciones/nueva'
@@ -171,8 +193,10 @@ export interface FileRouteTypes {
     | '/recepcion'
     | '/gestion/login'
     | '/_app/gestion/admin'
+    | '/_app/gestion/ayuda'
     | '/_app/gestion/dashboard'
     | '/_app/gestion/odontologos'
+    | '/_app/gestion/precios'
     | '/api/auth/$'
     | '/_app/gestion/'
     | '/_app/gestion/prestaciones/nueva'
@@ -233,6 +257,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/gestion/precios': {
+      id: '/_app/gestion/precios'
+      path: '/gestion/precios'
+      fullPath: '/gestion/precios'
+      preLoaderRoute: typeof AppGestionPreciosRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/gestion/odontologos': {
       id: '/_app/gestion/odontologos'
       path: '/gestion/odontologos'
@@ -245,6 +276,13 @@ declare module '@tanstack/react-router' {
       path: '/gestion/dashboard'
       fullPath: '/gestion/dashboard'
       preLoaderRoute: typeof AppGestionDashboardRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/gestion/ayuda': {
+      id: '/_app/gestion/ayuda'
+      path: '/gestion/ayuda'
+      fullPath: '/gestion/ayuda'
+      preLoaderRoute: typeof AppGestionAyudaRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/gestion/admin': {
@@ -287,8 +325,10 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppGestionAdminRoute: typeof AppGestionAdminRoute
+  AppGestionAyudaRoute: typeof AppGestionAyudaRoute
   AppGestionDashboardRoute: typeof AppGestionDashboardRoute
   AppGestionOdontologosRoute: typeof AppGestionOdontologosRoute
+  AppGestionPreciosRoute: typeof AppGestionPreciosRoute
   AppGestionIndexRoute: typeof AppGestionIndexRoute
   AppGestionPrestacionesNuevaRoute: typeof AppGestionPrestacionesNuevaRoute
   AppGestionReportesDiarioRoute: typeof AppGestionReportesDiarioRoute
@@ -298,8 +338,10 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppGestionAdminRoute: AppGestionAdminRoute,
+  AppGestionAyudaRoute: AppGestionAyudaRoute,
   AppGestionDashboardRoute: AppGestionDashboardRoute,
   AppGestionOdontologosRoute: AppGestionOdontologosRoute,
+  AppGestionPreciosRoute: AppGestionPreciosRoute,
   AppGestionIndexRoute: AppGestionIndexRoute,
   AppGestionPrestacionesNuevaRoute: AppGestionPrestacionesNuevaRoute,
   AppGestionReportesDiarioRoute: AppGestionReportesDiarioRoute,

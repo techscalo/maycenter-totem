@@ -98,7 +98,7 @@ export const listNomencladores = createServerFn({ method: "GET" })
       .where(
         and(eq(nomencladores.obraSocialId, data.obraSocialId), eq(nomencladores.activo, true)),
       )
-      .orderBy(asc(nomencladores.codigo));
+      .orderBy(asc(nomencladores.plan), asc(nomencladores.codigo));
   });
 
 export const listServiciosParticulares = createServerFn({ method: "GET" }).handler(async () => {
@@ -526,9 +526,11 @@ export const createNomenclador = createServerFn({ method: "POST" })
     z
       .object({
         obraSocialId: z.string().uuid(),
+        plan: z.string().trim().min(1).nullable().optional(),
         codigo: z.string().min(1),
         descripcion: z.string().min(1),
         monto: z.number().min(0).default(0),
+        montoPaciente: z.number().min(0).nullable().optional(),
       })
       .parse(i),
   )
@@ -536,23 +538,41 @@ export const createNomenclador = createServerFn({ method: "POST" })
     await requireAdmin();
     await db.insert(nomencladores).values({
       obraSocialId: data.obraSocialId,
+      plan: data.plan ?? null,
       codigo: data.codigo.trim(),
       descripcion: data.descripcion.trim(),
       monto: String(data.monto),
+      montoPaciente: data.montoPaciente == null ? null : String(data.montoPaciente),
     });
     return { ok: true };
   });
 
 export const updateNomenclador = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) =>
-    z.object({ id: z.string().uuid(), monto: z.number().min(0) }).parse(i),
+    z
+      .object({
+        id: z.string().uuid(),
+        plan: z.string().trim().min(1).nullable().optional(),
+        codigo: z.string().min(1).optional(),
+        descripcion: z.string().min(1).optional(),
+        monto: z.number().min(0).optional(),
+        montoPaciente: z.number().min(0).nullable().optional(),
+        activo: z.boolean().optional(),
+      })
+      .parse(i),
   )
   .handler(async ({ data }) => {
     await requireAdmin();
-    await db
-      .update(nomencladores)
-      .set({ monto: String(data.monto) })
-      .where(eq(nomencladores.id, data.id));
+    const set: Record<string, unknown> = {};
+    if (data.plan !== undefined) set.plan = data.plan;
+    if (data.codigo !== undefined) set.codigo = data.codigo.trim();
+    if (data.descripcion !== undefined) set.descripcion = data.descripcion.trim();
+    if (data.monto !== undefined) set.monto = String(data.monto);
+    if (data.montoPaciente !== undefined)
+      set.montoPaciente = data.montoPaciente == null ? null : String(data.montoPaciente);
+    if (data.activo !== undefined) set.activo = data.activo;
+    if (Object.keys(set).length === 0) return { ok: true };
+    await db.update(nomencladores).set(set).where(eq(nomencladores.id, data.id));
     return { ok: true };
   });
 
@@ -572,7 +592,7 @@ export const listNomencladoresAdmin = createServerFn({ method: "GET" })
       .select()
       .from(nomencladores)
       .where(eq(nomencladores.obraSocialId, data.obraSocialId))
-      .orderBy(asc(nomencladores.codigo));
+      .orderBy(asc(nomencladores.plan), asc(nomencladores.codigo));
   });
 
 // Servicios particulares (catálogo USD)
