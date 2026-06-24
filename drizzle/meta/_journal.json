@@ -22,6 +22,20 @@
       "when": 1781985816795,
       "tag": "0002_arrivals",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782334589712,
+      "tag": "0003_add_plan_nomencladores",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1782338092659,
+      "tag": "0004_add_monto_paciente",
+      "breakpoints": true
     }
   ]
 }

@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { Combobox } from "@/components/ui/combobox";
 import { Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useUserContext } from "@/lib/gestion/use-auth";
-import { useClinicaActiva } from "@/lib/gestion/clinica";
 import {
   listSucursales,
   listPisos,
@@ -57,6 +57,7 @@ const emptyHeader = (sucursalDefault: string) => ({
   dni: "",
   sucursal_id: sucursalDefault,
   obra_social_id: "",
+  plan: "",
   piso_id: "",
   odontologo_id: "",
   codigo_consulta: "",
@@ -64,14 +65,10 @@ const emptyHeader = (sucursalDefault: string) => ({
   observaciones: "",
 });
 
-const sel =
-  "flex h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
-
 function NuevaPrestacion() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { profile } = useUserContext();
-  const [clinicaActiva] = useClinicaActiva();
   const [header, setHeader] = useState(emptyHeader(""));
   const [items, setItems] = useState<LineItem[]>([emptyLine()]);
 
@@ -89,16 +86,8 @@ function NuevaPrestacion() {
     queryFn: () => listPisos({ data: { sucursalId: header.sucursal_id } }),
   });
   const { data: odontologos = [] } = useQuery({
-    queryKey: ["odontologos", header.sucursal_id, header.piso_id],
-    enabled: !!header.sucursal_id,
-    queryFn: () =>
-      listOdontologos({
-        data: {
-          sucursalId: header.sucursal_id,
-          ...(header.piso_id ? { pisoId: header.piso_id } : {}),
-          soloActivos: true,
-        },
-      }),
+    queryKey: ["odontologos", "activos"],
+    queryFn: () => listOdontologos({ data: { soloActivos: true } }),
   });
 
   const selectedObra: any = useMemo(
@@ -118,17 +107,25 @@ function NuevaPrestacion() {
     queryFn: () => listServiciosParticulares(),
   });
 
-  // Sucursal por defecto: clínica activa elegida > sucursal del perfil > única sucursal
+  // Planes disponibles dentro de la OS (OSDE, Biomed). Si hay, se filtra por plan.
+  const planes = useMemo(
+    () => [...new Set((nomencladores as any[]).map((n) => n.plan).filter(Boolean))],
+    [nomencladores],
+  );
+  const nomencladoresFiltrados = useMemo(
+    () => (header.plan ? (nomencladores as any[]).filter((n) => n.plan === header.plan) : nomencladores),
+    [nomencladores, header.plan],
+  );
+
+  // Sucursal por defecto: sucursal del perfil > única sucursal
   useEffect(() => {
     if (header.sucursal_id) return;
-    if (clinicaActiva) {
-      setHeader((h) => ({ ...h, sucursal_id: clinicaActiva }));
-    } else if (profile?.sucursalId) {
+    if (profile?.sucursalId) {
       setHeader((h) => ({ ...h, sucursal_id: profile.sucursalId! }));
     } else if (sucursales.length === 1) {
       setHeader((h) => ({ ...h, sucursal_id: (sucursales[0] as any).id }));
     }
-  }, [clinicaActiva, profile?.sucursalId, sucursales, header.sucursal_id]);
+  }, [profile?.sucursalId, sucursales, header.sucursal_id]);
 
   const patchItem = (key: string, patch: Partial<LineItem>) =>
     setItems((arr) => arr.map((it) => (it.key === key ? { ...it, ...patch } : it)));
@@ -144,7 +141,7 @@ function NuevaPrestacion() {
   };
 
   const onObraChange = (id: string) => {
-    setHeader((h) => ({ ...h, obra_social_id: id }));
+    setHeader((h) => ({ ...h, obra_social_id: id, plan: "" }));
     setItems([emptyLine()]); // el tipo de línea cambia según particular o no
   };
 
@@ -263,67 +260,56 @@ function NuevaPrestacion() {
 
             <div>
               <Label>Sucursal</Label>
-              <select
-                className={sel}
+              <Combobox
+                options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))}
                 value={header.sucursal_id}
-                onChange={(e) =>
-                  setHeader({ ...header, sucursal_id: e.target.value, piso_id: "", odontologo_id: "" })
-                }
-              >
-                <option value="">Elegir…</option>
-                {sucursales.map((s: any) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nombre}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setHeader({ ...header, sucursal_id: v, piso_id: "", odontologo_id: "" })}
+              />
             </div>
             <div>
               <Label>Piso</Label>
-              <select
-                className={sel}
+              <Combobox
+                options={pisos.map((p: any) => ({ value: p.id, label: p.nombre }))}
                 value={header.piso_id}
+                onChange={(v) => setHeader({ ...header, piso_id: v })}
                 disabled={!header.sucursal_id}
-                onChange={(e) => setHeader({ ...header, piso_id: e.target.value, odontologo_id: "" })}
-              >
-                <option value="">{header.sucursal_id ? "Elegir…" : "Elegí sucursal primero"}</option>
-                {pisos.map((p: any) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nombre}
-                  </option>
-                ))}
-              </select>
+                placeholder={header.sucursal_id ? "Elegir…" : "Elegí sucursal primero"}
+              />
             </div>
             <div>
               <Label>Odontólogo</Label>
-              <select
-                className={sel}
+              <Combobox
+                options={odontologos.map((o: any) => ({
+                  value: o.id,
+                  label: `${o.nombre}${o.numeroOd ? ` (${o.numeroOd})` : ""}`,
+                }))}
                 value={header.odontologo_id}
-                disabled={!header.sucursal_id}
-                onChange={(e) => setHeader({ ...header, odontologo_id: e.target.value })}
-              >
-                <option value="">Elegir…</option>
-                {odontologos.map((o: any) => (
-                  <option key={o.id} value={o.id}>
-                    {o.nombre}
-                    {o.numeroOd ? ` (${o.numeroOd})` : ""}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setHeader({ ...header, odontologo_id: v })}
+              />
             </div>
 
-            <div className="md:col-span-3">
+            <div className={planes.length > 0 ? "md:col-span-2" : "md:col-span-3"}>
               <Label>Obra social</Label>
-              <select className={sel} value={header.obra_social_id} onChange={(e) => onObraChange(e.target.value)}>
-                <option value="">Elegir…</option>
-                {obras.map((o: any) => (
-                  <option key={o.id} value={o.id}>
-                    {o.nombre}
-                    {o.esParticular ? " (particular)" : ""}
-                  </option>
-                ))}
-              </select>
+              <Combobox
+                options={obras.map((o: any) => ({
+                  value: o.id,
+                  label: `${o.nombre}${o.esParticular ? " (particular)" : ""}`,
+                }))}
+                value={header.obra_social_id}
+                onChange={onObraChange}
+              />
             </div>
+            {planes.length > 0 && (
+              <div>
+                <Label>Plan</Label>
+                <Combobox
+                  options={planes.map((p) => ({ value: p, label: p }))}
+                  value={header.plan}
+                  onChange={(v) => { setHeader((h) => ({ ...h, plan: v })); setItems([emptyLine()]); }}
+                  placeholder="Elegir plan…"
+                />
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -375,21 +361,16 @@ function NuevaPrestacion() {
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                   <div className="md:col-span-6">
                     <Label>Servicio particular</Label>
-                    <select
-                      className={sel}
+                    <Combobox
+                      options={servicios.map((s: any) => ({
+                        value: s.id,
+                        label: `${s.codigo ? `${s.codigo} — ` : ""}${s.descripcion} (U$D ${Number(s.precioUsd).toLocaleString("es-AR")})`,
+                      }))}
                       value={it.servicioParticularId}
-                      onChange={(e) => onServicioChange(it.key, e.target.value)}
-                    >
-                      <option value="">
-                        {servicios.length === 0 ? "Sin servicios — usá manual" : "Elegir servicio…"}
-                      </option>
-                      {servicios.map((s: any) => (
-                        <option key={s.id} value={s.id}>
-                          {s.codigo ? `${s.codigo} — ` : ""}
-                          {s.descripcion} (U$D {Number(s.precioUsd).toLocaleString("es-AR")})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => onServicioChange(it.key, v)}
+                      placeholder={servicios.length === 0 ? "Sin servicios — usá manual" : "Elegir servicio…"}
+                      searchPlaceholder="Buscar servicio…"
+                    />
                   </div>
                   <div className="md:col-span-2">
                     <Label>Cantidad</Label>
@@ -446,20 +427,23 @@ function NuevaPrestacion() {
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                   <div className="md:col-span-7">
                     <Label>Código de prestación</Label>
-                    <select
-                      className={sel}
+                    <Combobox
+                      options={nomencladoresFiltrados.map((n: any) => ({
+                        value: n.id,
+                        label: `${n.codigo} — ${n.descripcion} ($${Number(n.monto).toLocaleString("es-AR")})`,
+                      }))}
                       value={it.nomencladorId}
-                      onChange={(e) => onNomencladorChange(it.key, e.target.value)}
-                    >
-                      <option value="">
-                        {nomencladores.length === 0 ? "Sin códigos — usá manual" : "Elegir código…"}
-                      </option>
-                      {nomencladores.map((n: any) => (
-                        <option key={n.id} value={n.id}>
-                          {n.codigo} — {n.descripcion} (${Number(n.monto).toLocaleString("es-AR")})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => onNomencladorChange(it.key, v)}
+                      placeholder={
+                        planes.length > 0 && !header.plan
+                          ? "Elegí un plan primero"
+                          : nomencladoresFiltrados.length === 0
+                            ? "Sin códigos — usá manual"
+                            : "Elegir código…"
+                      }
+                      searchPlaceholder="Buscar código o prestación…"
+                      disabled={planes.length > 0 && !header.plan}
+                    />
                   </div>
                   <div className="md:col-span-2">
                     <Label>Cantidad</Label>

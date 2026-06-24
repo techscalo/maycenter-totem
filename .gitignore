@@ -26,6 +26,9 @@ dist-ssr
 
 # Vercel
 .vercel
+
+# ETL: salida generada (JSON intermedio)
+scripts/out/
 .dev.vars
 
 # Editor directories and files

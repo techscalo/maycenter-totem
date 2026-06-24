@@ -1,0 +1,1 @@
+ALTER TABLE "nomencladores" ADD COLUMN "monto_paciente" numeric(12, 2);
