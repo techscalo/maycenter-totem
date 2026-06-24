@@ -584,10 +584,12 @@ export const deleteNomenclador = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Listado completo (incluye inactivos) para la pantalla de Precios. Solo lectura,
+// así que basta con estar autenticado; la edición sigue siendo admin.
 export const listNomencladoresAdmin = createServerFn({ method: "GET" })
   .inputValidator((i: unknown) => z.object({ obraSocialId: z.string().uuid() }).parse(i))
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await requireAuth();
     return db
       .select()
       .from(nomencladores)
