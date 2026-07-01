@@ -15,6 +15,17 @@ import {
 } from "@/db/schema";
 import { requireAuth, requireAdmin, type AuthCtx } from "@/lib/gestion/session.server";
 
+// Resuelve la sucursal de trabajo: valida que la pedida sea una de las asignadas;
+// si no se pide ninguna, usa la primera asignada. Lanza si el usuario no tiene acceso.
+function resolveSucursal(ctx: AuthCtx, pedida?: string): string {
+  if (ctx.sucursalIds.length === 0) throw new Error("No tenés ninguna sucursal asignada");
+  if (pedida) {
+    if (!ctx.sucursalIds.includes(pedida)) throw new Error("No tenés acceso a esa sucursal");
+    return pedida;
+  }
+  return ctx.sucursalIds[0];
+}
+
 // ---------------------------------------------------------------------------
 // Catálogos (lectura)
 // ---------------------------------------------------------------------------
@@ -65,9 +76,16 @@ export const listOdontologos = createServerFn({ method: "GET" })
       .parse(i ?? {}),
   )
   .handler(async ({ data }) => {
-    await requireAuth();
+    const ctx = await requireAuth();
+    if (ctx.sucursalIds.length === 0) return [];
     const conds = [];
-    if (data.sucursalId) conds.push(eq(odontologos.sucursalId, data.sucursalId));
+    // Acota a las sucursales asignadas; si piden una específica, la valida.
+    if (data.sucursalId) {
+      if (!ctx.sucursalIds.includes(data.sucursalId)) return [];
+      conds.push(eq(odontologos.sucursalId, data.sucursalId));
+    } else {
+      conds.push(inArray(odontologos.sucursalId, ctx.sucursalIds));
+    }
     if (data.pisoId) conds.push(eq(odontologos.pisoId, data.pisoId));
     if (data.soloActivos) conds.push(eq(odontologos.activo, true));
     return db
@@ -137,24 +155,23 @@ export const listPrestaciones = createServerFn({ method: "GET" })
   )
   .handler(async ({ data }) => {
     const ctx = await requireAuth();
+    if (ctx.sucursalIds.length === 0) return [];
 
-    const conds = [gte(atenciones.fecha, data.desde), lte(atenciones.fecha, data.hasta)];
-    if (data.sucursalId) conds.push(eq(atenciones.sucursalId, data.sucursalId));
+    // Scope por sede activa (validada contra las asignadas). Aplica a todos los roles.
+    const sucursalId = resolveSucursal(ctx, data.sucursalId);
+    const conds = [
+      gte(atenciones.fecha, data.desde),
+      lte(atenciones.fecha, data.hasta),
+      eq(atenciones.sucursalId, sucursalId),
+    ];
     if (data.obraSocialId) conds.push(eq(atenciones.obraSocialId, data.obraSocialId));
     if (data.odontologoId) conds.push(eq(atenciones.odontologoId, data.odontologoId));
 
-    // Autorización (ex-RLS)
-    if (!ctx.isStaff) {
-      if (ctx.roles.includes("administrativo")) {
-        if (ctx.sucursalId) conds.push(eq(atenciones.sucursalId, ctx.sucursalId));
-        else return [];
-      } else if (ctx.roles.includes("odontologo")) {
-        const ids = await odoSelf(ctx);
-        if (!ids.length) return [];
-        conds.push(inArray(atenciones.odontologoId, ids));
-      } else {
-        return [];
-      }
+    // El odontólogo (sin rol administrativo) ve solo sus propias prestaciones.
+    if (!ctx.isStaff && ctx.roles.includes("odontologo") && !ctx.roles.includes("administrativo")) {
+      const ids = await odoSelf(ctx);
+      if (!ids.length) return [];
+      conds.push(inArray(atenciones.odontologoId, ids));
     }
 
     const rows = await db
@@ -170,6 +187,8 @@ export const listPrestaciones = createServerFn({ method: "GET" })
         cantidad: atencionItems.cantidad,
         monto: atencionItems.monto,
         monto_usd: atencionItems.montoUsd,
+        facturable: atencionItems.facturable,
+        estado_placa: atencionItems.estadoPlaca,
         codigo_manual: atencionItems.codigoManual,
         descripcion_manual: atencionItems.descripcionManual,
         created_at: atenciones.createdAt,
@@ -207,6 +226,8 @@ export const listPrestaciones = createServerFn({ method: "GET" })
       cantidad: r.cantidad,
       monto: Number(r.monto),
       monto_usd: r.monto_usd === null ? null : Number(r.monto_usd),
+      facturable: r.facturable,
+      estado_placa: r.estado_placa,
       observaciones: r.observaciones,
       codigo_manual: r.nom_codigo ? null : (r.serv_codigo ?? r.codigo_manual),
       descripcion_manual: r.nom_descripcion ? null : (r.serv_descripcion ?? r.descripcion_manual),
@@ -233,6 +254,8 @@ const itemInput = z.object({
   monto: z.number().min(0).default(0),
   montoUsd: z.number().min(0).nullable().optional(),
   cotizacionUsd: z.number().min(0).nullable().optional(),
+  facturable: z.boolean().default(true),
+  estadoPlaca: z.enum(["impresion", "entrega", "reimpresion"]).nullable().optional(),
 });
 
 export const createAtencion = createServerFn({ method: "POST" })
@@ -258,11 +281,9 @@ export const createAtencion = createServerFn({ method: "POST" })
     if (!ctx.isStaff && !ctx.roles.includes("administrativo")) {
       throw new Error("No tenés permiso para cargar prestaciones");
     }
-    // administrativo: forzar su sucursal
-    if (!ctx.isStaff && ctx.roles.includes("administrativo")) {
-      if (!ctx.sucursalId || ctx.sucursalId !== data.sucursalId) {
-        throw new Error("Solo podés cargar en tu sucursal");
-      }
+    // Solo se puede cargar en una sucursal asignada (aplica a todos los roles).
+    if (!ctx.sucursalIds.includes(data.sucursalId)) {
+      throw new Error("Solo podés cargar en una sucursal asignada");
     }
 
     const [atencion] = await db
@@ -296,6 +317,8 @@ export const createAtencion = createServerFn({ method: "POST" })
           it.cotizacionUsd === null || it.cotizacionUsd === undefined
             ? null
             : String(it.cotizacionUsd),
+        facturable: it.facturable,
+        estadoPlaca: it.estadoPlaca ?? null,
       })),
     );
 
@@ -321,6 +344,8 @@ export const updateAtencionItem = createServerFn({ method: "POST" })
         cantidad: z.number().int().positive().optional(),
         monto: z.number().min(0).optional(),
         montoUsd: z.number().min(0).nullable().optional(),
+        facturable: z.boolean().optional(),
+        estadoPlaca: z.enum(["impresion", "entrega", "reimpresion"]).nullable().optional(),
       })
       .parse(i),
   )
@@ -335,6 +360,8 @@ export const updateAtencionItem = createServerFn({ method: "POST" })
         ...(data.montoUsd !== undefined
           ? { montoUsd: data.montoUsd === null ? null : String(data.montoUsd) }
           : {}),
+        ...(data.facturable !== undefined ? { facturable: data.facturable } : {}),
+        ...(data.estadoPlaca !== undefined ? { estadoPlaca: data.estadoPlaca } : {}),
       })
       .where(eq(atencionItems.id, data.itemId));
     return { ok: true };
@@ -584,10 +611,12 @@ export const deleteNomenclador = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Listado completo (incluye inactivos) para la pantalla de Precios. Solo lectura,
+// así que basta con estar autenticado; la edición sigue siendo admin.
 export const listNomencladoresAdmin = createServerFn({ method: "GET" })
   .inputValidator((i: unknown) => z.object({ obraSocialId: z.string().uuid() }).parse(i))
   .handler(async ({ data }) => {
-    await requireAdmin();
+    await requireAuth();
     return db
       .select()
       .from(nomencladores)

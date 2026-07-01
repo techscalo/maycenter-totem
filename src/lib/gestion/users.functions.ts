@@ -3,7 +3,7 @@ import { z } from "zod";
 import { eq, inArray } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/db/client";
-import { profiles, userRoles, sucursales } from "@/db/schema";
+import { profiles, userRoles, sucursales, userSucursales } from "@/db/schema";
 import { user as userTable, account as accountTable } from "@/db/auth-schema";
 import { requireAdmin } from "@/lib/gestion/session.server";
 
@@ -21,17 +21,15 @@ export const listGestionUsers = createServerFn({ method: "GET" }).handler(async 
     .select({
       userId: profiles.userId,
       nombre: profiles.nombre,
-      sucursalId: profiles.sucursalId,
-      sucursalNombre: sucursales.nombre,
       email: userTable.email,
       createdAt: userTable.createdAt,
     })
     .from(profiles)
-    .leftJoin(sucursales, eq(profiles.sucursalId, sucursales.id))
     .leftJoin(userTable, eq(profiles.userId, userTable.id));
 
   const ids = profs.map((p) => p.userId);
   let rolesByUser: Record<string, string[]> = {};
+  let sucsByUser: Record<string, { id: string; nombre: string }[]> = {};
   if (ids.length) {
     const roles = await db
       .select({ userId: userRoles.userId, role: userRoles.role })
@@ -44,6 +42,23 @@ export const listGestionUsers = createServerFn({ method: "GET" }).handler(async 
       },
       {} as Record<string, string[]>,
     );
+
+    const sucs = await db
+      .select({
+        userId: userSucursales.userId,
+        id: userSucursales.sucursalId,
+        nombre: sucursales.nombre,
+      })
+      .from(userSucursales)
+      .leftJoin(sucursales, eq(userSucursales.sucursalId, sucursales.id))
+      .where(inArray(userSucursales.userId, ids));
+    sucsByUser = sucs.reduce(
+      (acc, s) => {
+        (acc[s.userId] ||= []).push({ id: s.id, nombre: s.nombre ?? "" });
+        return acc;
+      },
+      {} as Record<string, { id: string; nombre: string }[]>,
+    );
   }
 
   return profs
@@ -52,8 +67,8 @@ export const listGestionUsers = createServerFn({ method: "GET" }).handler(async 
       user_id: p.userId,
       nombre: p.nombre,
       email: p.email ?? "",
-      sucursal_id: p.sucursalId,
-      sucursal_nombre: p.sucursalNombre ?? null,
+      sucursales: sucsByUser[p.userId] ?? [],
+      sucursal_ids: (sucsByUser[p.userId] ?? []).map((s) => s.id),
       roles: rolesByUser[p.userId] ?? [],
     }));
 });
@@ -66,7 +81,7 @@ export const createGestionUser = createServerFn({ method: "POST" })
         password: z.string().min(6).max(72),
         nombre: z.string().min(1).max(120),
         role: roleEnum,
-        sucursal_id: z.string().uuid().nullable().optional(),
+        sucursal_ids: z.array(z.string().uuid()).min(1),
       })
       .parse(input),
   )
@@ -104,9 +119,11 @@ export const createGestionUser = createServerFn({ method: "POST" })
     await db.insert(profiles).values({
       userId,
       nombre: data.nombre,
-      sucursalId: data.sucursal_id ?? null,
     });
     await db.insert(userRoles).values({ userId, role: data.role });
+    await db
+      .insert(userSucursales)
+      .values(data.sucursal_ids.map((sucursalId) => ({ userId, sucursalId })));
 
     return { ok: true, user_id: userId };
   });
@@ -117,7 +134,7 @@ export const updateGestionUser = createServerFn({ method: "POST" })
       .object({
         user_id: z.string(),
         nombre: z.string().min(1).max(120).optional(),
-        sucursal_id: z.string().uuid().nullable().optional(),
+        sucursal_ids: z.array(z.string().uuid()).min(1).optional(),
         role: roleEnum.optional(),
         new_password: z.string().min(6).max(72).optional(),
       })
@@ -126,15 +143,18 @@ export const updateGestionUser = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     await requireAdmin();
 
-    if (data.nombre !== undefined || data.sucursal_id !== undefined) {
+    if (data.nombre !== undefined) {
       await db
         .update(profiles)
-        .set({
-          ...(data.nombre !== undefined ? { nombre: data.nombre } : {}),
-          ...(data.sucursal_id !== undefined ? { sucursalId: data.sucursal_id } : {}),
-          updatedAt: new Date(),
-        })
+        .set({ nombre: data.nombre, updatedAt: new Date() })
         .where(eq(profiles.userId, data.user_id));
+    }
+
+    if (data.sucursal_ids) {
+      await db.delete(userSucursales).where(eq(userSucursales.userId, data.user_id));
+      await db
+        .insert(userSucursales)
+        .values(data.sucursal_ids.map((sucursalId) => ({ userId: data.user_id, sucursalId })));
     }
 
     if (data.role) {
@@ -159,6 +179,7 @@ export const deleteGestionUser = createServerFn({ method: "POST" })
     const ctx = await requireAdmin();
     if (data.user_id === ctx.userId) throw new Error("No podés eliminarte a vos mismo");
     await db.delete(userRoles).where(eq(userRoles.userId, data.user_id));
+    await db.delete(userSucursales).where(eq(userSucursales.userId, data.user_id));
     await db.delete(profiles).where(eq(profiles.userId, data.user_id));
     await db.delete(userTable).where(eq(userTable.id, data.user_id)); // cascade: session, account
     return { ok: true };

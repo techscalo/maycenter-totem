@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { GestionShell } from "@/components/gestion/Shell";
 import { useSession } from "@/lib/auth-client";
+import { SucursalActivaProvider } from "@/lib/gestion/sucursal-activa";
 
 export const Route = createFileRoute("/_app")({
   component: ProtectedLayout,
@@ -28,8 +29,10 @@ function ProtectedLayout() {
   if (user === null) return null;
 
   return (
-    <GestionShell>
-      <Outlet />
-    </GestionShell>
+    <SucursalActivaProvider>
+      <GestionShell>
+        <Outlet />
+      </GestionShell>
+    </SucursalActivaProvider>
   );
 }

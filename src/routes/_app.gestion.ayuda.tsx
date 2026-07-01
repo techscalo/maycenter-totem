@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Monitor, ClipboardList, LogIn, LayoutDashboard, BarChart3, ListPlus, Table2,
-  Stethoscope, DollarSign, FileText, Settings, ShieldCheck, HelpCircle,
+  Stethoscope, DollarSign, FileText, Settings, ShieldCheck, HelpCircle, PlayCircle,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_app/gestion/ayuda")({
@@ -45,7 +46,7 @@ const SECCIONES: Sec[] = [
     id: "recepcion",
     icon: ClipboardList,
     titulo: "Recepción",
-    ruta: "/recepcion",
+    ruta: "/gestion/recepcion",
     acceso: "Requiere iniciar sesión.",
     resumen:
       "Panel donde la recepcionista ve las llegadas del tótem y las va gestionando. Se actualiza solo cada ~10 segundos.",
@@ -104,11 +105,14 @@ const SECCIONES: Sec[] = [
       "Elegí la obra social. Si la obra social tiene planes (ej. OSDE, Biomed), aparece el selector 'Plan'.",
       "En cada línea elegí el código de prestación: el precio se completa solo según la obra social y el plan.",
       "Para varias prestaciones, tocá 'Agregar línea'. Si algo no está en la lista, usá código/descripción manual.",
+      "En cada línea, el check 'Facturable' viene activado. Desmarcalo en trabajos que no se facturan (pruebas, escaneos, impresiones).",
+      "Si la línea es una placa MIO, elegí su estado: Impresión, Entrega o Reimpresión.",
       "Revisá el total y tocá 'Guardar atención'.",
     ],
     notas: [
       "Particular: si elegís 'Particular', usás la lista de precios particular en ARS (se gestiona en Precios).",
       "Los precios salen de la sección Precios; si están desactualizados, corregilos ahí.",
+      "El check 'Facturable' y el estado de la placa MIO alimentan los análisis del reporte IOMA. Cargalos bien para que los números cierren.",
     ],
   },
   {
@@ -165,8 +169,13 @@ const SECCIONES: Sec[] = [
     resumen:
       "Reportes para control y presentación: el diario resume la actividad del día; el de IOMA arma la liquidación específica de esa obra social.",
     pasos: [
-      "Elegí la fecha o período del reporte.",
-      "Revisá los totales y exportá/imprimí si lo necesitás.",
+      "Reporte diario: elegí la fecha y, si querés, filtrá por sucursal, obra social y/o odontólogo. Arriba ves los totales (pacientes, prestaciones y facturación).",
+      "Reporte IOMA: elegí el período. Además del total, trae los análisis específicos de IOMA.",
+      "Revisá los totales y exportá a Excel o PDF.",
+    ],
+    notas: [
+      "Pacientes = cantidad de atenciones distintas; prestaciones = cantidad de líneas cargadas.",
+      "El reporte IOMA muestra: primeras consultas, actividades por odontólogo, placas MIO (impresas vs entregadas, con sus sesiones), incrustaciones y trabajos no facturables por odontólogo.",
     ],
   },
   {
@@ -177,7 +186,7 @@ const SECCIONES: Sec[] = [
     acceso: "Solo admin.",
     resumen: "Configuración de toda la plataforma, organizada en pestañas.",
     pasos: [
-      "Usuarios: crear cuentas, asignar rol (admin u operador) y sucursal, resetear contraseña, dar de baja.",
+      "Usuarios: crear cuentas, asignar rol y sucursal (CABA, La Plata o Ambas), resetear contraseña, dar de baja.",
       "Sucursales: alta/baja de las sedes (ej. CABA, La Plata).",
       "Pisos: pisos/consultorios dentro de cada sucursal.",
       "Obras sociales: listado de coberturas; marcar activas e indicar si son particular.",
@@ -189,13 +198,15 @@ const SECCIONES: Sec[] = [
   {
     id: "roles",
     icon: ShieldCheck,
-    titulo: "Roles y permisos",
+    titulo: "Roles y sucursales",
     acceso: "—",
-    resumen: "Hay dos niveles de acceso.",
+    resumen: "El rol define qué puede editar; la sucursal asignada define qué información ve.",
     notas: [
-      "Admin: ve y edita todo, incluida Administración y los precios.",
+      "Admin: ve y edita todo (Administración y precios), dentro de su(s) sucursal(es) asignada(s).",
       "Operador (sin rol admin): puede cargar atenciones, ver listados y reportes, pero no editar la configuración ni los precios.",
-      "Cada usuario puede tener una sucursal asignada, que se usa como sucursal por defecto al cargar atenciones.",
+      "Cada cuenta se asigna a CABA, La Plata o Ambas (desde Administración → Usuarios).",
+      "Toda la información (reportes, prestaciones, odontólogos) se muestra de la sucursal activa.",
+      "Quien tiene Ambas ve un selector de sucursal en el menú lateral para cambiar de sede (una por vez). Quien tiene una sola la ve fija.",
     ],
   },
 ];
@@ -203,13 +214,21 @@ const SECCIONES: Sec[] = [
 function AyudaPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <HelpCircle className="h-6 w-6" /> Ayuda y documentación
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Guía de cada pantalla del sistema: qué hace, quién puede usarla y cómo.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <HelpCircle className="h-6 w-6" /> Ayuda y documentación
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Guía de cada pantalla del sistema: qué hace, quién puede usarla y cómo.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => import("@/lib/gestion/tour").then((m) => m.startTour())}
+        >
+          <PlayCircle className="h-4 w-4 mr-2" /> Ver tutorial guiado
+        </Button>
       </div>
 
       <Card>

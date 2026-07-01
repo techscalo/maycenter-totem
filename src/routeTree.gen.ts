@@ -9,12 +9,12 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as RecepcionRouteImport } from './routes/recepcion'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as GestionLoginRouteImport } from './routes/gestion.login'
 import { Route as AppGestionIndexRouteImport } from './routes/_app.gestion.index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api.auth.$'
+import { Route as AppGestionRecepcionRouteImport } from './routes/_app.gestion.recepcion'
 import { Route as AppGestionPreciosRouteImport } from './routes/_app.gestion.precios'
 import { Route as AppGestionOdontologosRouteImport } from './routes/_app.gestion.odontologos'
 import { Route as AppGestionDashboardRouteImport } from './routes/_app.gestion.dashboard'
@@ -25,11 +25,6 @@ import { Route as AppGestionReportesIomaRouteImport } from './routes/_app.gestio
 import { Route as AppGestionReportesDiarioRouteImport } from './routes/_app.gestion.reportes.diario'
 import { Route as AppGestionPrestacionesNuevaRouteImport } from './routes/_app.gestion.prestaciones.nueva'
 
-const RecepcionRoute = RecepcionRouteImport.update({
-  id: '/recepcion',
-  path: '/recepcion',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
@@ -53,6 +48,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppGestionRecepcionRoute = AppGestionRecepcionRouteImport.update({
+  id: '/gestion/recepcion',
+  path: '/gestion/recepcion',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppGestionPreciosRoute = AppGestionPreciosRouteImport.update({
   id: '/gestion/precios',
@@ -105,13 +105,13 @@ const AppGestionPrestacionesNuevaRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
   '/gestion/admin': typeof AppGestionAdminRoute
   '/gestion/ayuda': typeof AppGestionAyudaRoute
   '/gestion/dashboard': typeof AppGestionDashboardRoute
   '/gestion/odontologos': typeof AppGestionOdontologosRoute
   '/gestion/precios': typeof AppGestionPreciosRoute
+  '/gestion/recepcion': typeof AppGestionRecepcionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/gestion/': typeof AppGestionIndexRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
@@ -121,13 +121,13 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
   '/gestion/admin': typeof AppGestionAdminRoute
   '/gestion/ayuda': typeof AppGestionAyudaRoute
   '/gestion/dashboard': typeof AppGestionDashboardRoute
   '/gestion/odontologos': typeof AppGestionOdontologosRoute
   '/gestion/precios': typeof AppGestionPreciosRoute
+  '/gestion/recepcion': typeof AppGestionRecepcionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/gestion': typeof AppGestionIndexRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
@@ -139,13 +139,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
-  '/recepcion': typeof RecepcionRoute
   '/gestion/login': typeof GestionLoginRoute
   '/_app/gestion/admin': typeof AppGestionAdminRoute
   '/_app/gestion/ayuda': typeof AppGestionAyudaRoute
   '/_app/gestion/dashboard': typeof AppGestionDashboardRoute
   '/_app/gestion/odontologos': typeof AppGestionOdontologosRoute
   '/_app/gestion/precios': typeof AppGestionPreciosRoute
+  '/_app/gestion/recepcion': typeof AppGestionRecepcionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_app/gestion/': typeof AppGestionIndexRoute
   '/_app/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
@@ -157,13 +157,13 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/recepcion'
     | '/gestion/login'
     | '/gestion/admin'
     | '/gestion/ayuda'
     | '/gestion/dashboard'
     | '/gestion/odontologos'
     | '/gestion/precios'
+    | '/gestion/recepcion'
     | '/api/auth/$'
     | '/gestion/'
     | '/gestion/prestaciones/nueva'
@@ -173,13 +173,13 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/recepcion'
     | '/gestion/login'
     | '/gestion/admin'
     | '/gestion/ayuda'
     | '/gestion/dashboard'
     | '/gestion/odontologos'
     | '/gestion/precios'
+    | '/gestion/recepcion'
     | '/api/auth/$'
     | '/gestion'
     | '/gestion/prestaciones/nueva'
@@ -190,13 +190,13 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_app'
-    | '/recepcion'
     | '/gestion/login'
     | '/_app/gestion/admin'
     | '/_app/gestion/ayuda'
     | '/_app/gestion/dashboard'
     | '/_app/gestion/odontologos'
     | '/_app/gestion/precios'
+    | '/_app/gestion/recepcion'
     | '/api/auth/$'
     | '/_app/gestion/'
     | '/_app/gestion/prestaciones/nueva'
@@ -208,20 +208,12 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
-  RecepcionRoute: typeof RecepcionRoute
   GestionLoginRoute: typeof GestionLoginRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/recepcion': {
-      id: '/recepcion'
-      path: '/recepcion'
-      fullPath: '/recepcion'
-      preLoaderRoute: typeof RecepcionRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_app': {
       id: '/_app'
       path: ''
@@ -256,6 +248,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/gestion/recepcion': {
+      id: '/_app/gestion/recepcion'
+      path: '/gestion/recepcion'
+      fullPath: '/gestion/recepcion'
+      preLoaderRoute: typeof AppGestionRecepcionRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/gestion/precios': {
       id: '/_app/gestion/precios'
@@ -329,6 +328,7 @@ interface AppRouteChildren {
   AppGestionDashboardRoute: typeof AppGestionDashboardRoute
   AppGestionOdontologosRoute: typeof AppGestionOdontologosRoute
   AppGestionPreciosRoute: typeof AppGestionPreciosRoute
+  AppGestionRecepcionRoute: typeof AppGestionRecepcionRoute
   AppGestionIndexRoute: typeof AppGestionIndexRoute
   AppGestionPrestacionesNuevaRoute: typeof AppGestionPrestacionesNuevaRoute
   AppGestionReportesDiarioRoute: typeof AppGestionReportesDiarioRoute
@@ -342,6 +342,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppGestionDashboardRoute: AppGestionDashboardRoute,
   AppGestionOdontologosRoute: AppGestionOdontologosRoute,
   AppGestionPreciosRoute: AppGestionPreciosRoute,
+  AppGestionRecepcionRoute: AppGestionRecepcionRoute,
   AppGestionIndexRoute: AppGestionIndexRoute,
   AppGestionPrestacionesNuevaRoute: AppGestionPrestacionesNuevaRoute,
   AppGestionReportesDiarioRoute: AppGestionReportesDiarioRoute,
@@ -354,7 +355,6 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
-  RecepcionRoute: RecepcionRoute,
   GestionLoginRoute: GestionLoginRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }

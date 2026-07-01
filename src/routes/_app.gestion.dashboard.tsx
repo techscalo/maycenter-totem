@@ -1,17 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { listSucursales, listPrestaciones } from "@/lib/gestion/data.server";
+import { listPrestaciones } from "@/lib/gestion/data.server";
+import { useSucursalActiva } from "@/lib/gestion/sucursal-activa";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   BarChart,
   Bar,
@@ -33,27 +27,32 @@ export const Route = createFileRoute("/_app/gestion/dashboard")({
   component: DashboardPage,
 });
 
-const COLORS = ["#2563eb", "#7c3aed", "#0891b2", "#16a34a", "#ea580c", "#db2777", "#65a30d", "#9333ea"];
+const COLORS = [
+  "#2563eb",
+  "#7c3aed",
+  "#0891b2",
+  "#16a34a",
+  "#ea580c",
+  "#db2777",
+  "#65a30d",
+  "#9333ea",
+];
 
 function DashboardPage() {
   const today = new Date();
+  const { sucursalId } = useSucursalActiva();
   const [desde, setDesde] = useState(format(subDays(today, 29), "yyyy-MM-dd"));
   const [hasta, setHasta] = useState(format(today, "yyyy-MM-dd"));
-  const [sucursalId, setSucursalId] = useState<string>("all");
-
-  const { data: sucursales } = useQuery({
-    queryKey: ["sucursales"],
-    queryFn: () => listSucursales(),
-  });
 
   const { data: rows } = useQuery({
+    enabled: !!sucursalId,
     queryKey: ["dashboard-prestaciones", desde, hasta, sucursalId],
     queryFn: () =>
       listPrestaciones({
         data: {
           desde,
           hasta,
-          ...(sucursalId !== "all" ? { sucursalId } : {}),
+          sucursalId,
           limit: 2000,
         },
       }),
@@ -97,16 +96,9 @@ function DashboardPage() {
       cur.cantidad += 1;
       map.set(k, cur);
     });
-    return Array.from(map.values()).sort((a, b) => b.monto - a.monto).slice(0, 10);
-  }, [rows]);
-
-  const porSucursal = useMemo(() => {
-    const map = new Map<string, number>();
-    (rows ?? []).forEach((x: any) => {
-      const k = x.sucursales?.nombre ?? "—";
-      map.set(k, (map.get(k) ?? 0) + Number(x.monto || 0));
-    });
-    return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
+    return Array.from(map.values())
+      .sort((a, b) => b.monto - a.monto)
+      .slice(0, 10);
   }, [rows]);
 
   const fmt = (n: number) =>
@@ -120,7 +112,7 @@ function DashboardPage() {
       </div>
 
       <Card>
-        <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+        <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <Label>Desde</Label>
             <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
@@ -128,18 +120,6 @@ function DashboardPage() {
           <div>
             <Label>Hasta</Label>
             <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
-          </div>
-          <div>
-            <Label>Sucursal</Label>
-            <Select value={sucursalId} onValueChange={setSucursalId}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas</SelectItem>
-                {(sucursales ?? []).map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </CardContent>
       </Card>
@@ -153,22 +133,35 @@ function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
-          <CardHeader><CardTitle className="text-base">Facturación diaria</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">Facturación diaria</CardTitle>
+          </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={serieDiaria}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                 <XAxis dataKey="fecha" tickFormatter={(d) => format(parseISO(d), "dd/MM")} />
                 <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={(v: number) => fmt(v)} labelFormatter={(d) => format(parseISO(d as string), "dd/MM/yyyy")} />
-                <Line type="monotone" dataKey="monto" stroke="#2563eb" strokeWidth={2} dot={false} />
+                <Tooltip
+                  formatter={(v: number) => fmt(v)}
+                  labelFormatter={(d) => format(parseISO(d as string), "dd/MM/yyyy")}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="monto"
+                  stroke="#2563eb"
+                  strokeWidth={2}
+                  dot={false}
+                />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="text-base">Prestaciones por día</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">Prestaciones por día</CardTitle>
+          </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={serieDiaria}>
@@ -183,12 +176,22 @@ function DashboardPage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="text-base">Facturación por obra social</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">Facturación por obra social</CardTitle>
+          </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={porObra} dataKey="value" nameKey="name" outerRadius={90} label={(d: any) => d.name}>
-                  {porObra.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                <Pie
+                  data={porObra}
+                  dataKey="value"
+                  nameKey="name"
+                  outerRadius={90}
+                  label={(d: any) => d.name}
+                >
+                  {porObra.map((_, i) => (
+                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                  ))}
                 </Pie>
                 <Tooltip formatter={(v: number) => fmt(v)} />
               </PieChart>
@@ -196,23 +199,10 @@ function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader><CardTitle className="text-base">Facturación por sucursal</CardTitle></CardHeader>
-          <CardContent className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={porSucursal}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis dataKey="name" />
-                <YAxis tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={(v: number) => fmt(v)} />
-                <Bar dataKey="value" fill="#0891b2" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
         <Card className="lg:col-span-2">
-          <CardHeader><CardTitle className="text-base">Top 10 odontólogos por facturación</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">Top 10 odontólogos por facturación</CardTitle>
+          </CardHeader>
           <CardContent className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={porOdontologo} layout="vertical" margin={{ left: 80 }}>

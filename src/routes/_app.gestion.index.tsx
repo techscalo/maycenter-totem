@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { listPrestaciones } from "@/lib/gestion/data.server";
+import { useSucursalActiva } from "@/lib/gestion/sucursal-activa";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ListPlus, Table2, Settings, Wallet, Users, Activity } from "lucide-react";
 import { useUserContext } from "@/lib/gestion/use-auth";
@@ -11,12 +12,16 @@ export const Route = createFileRoute("/_app/gestion/")({
 
 function HomePage() {
   const { profile, isAdmin } = useUserContext();
+  const { sucursalId } = useSucursalActiva();
 
   const { data: stats } = useQuery({
-    queryKey: ["gestion-home-stats"],
+    enabled: !!sucursalId,
+    queryKey: ["gestion-home-stats", sucursalId],
     queryFn: async () => {
       const isoToday = new Date().toISOString().slice(0, 10);
-      const rows = await listPrestaciones({ data: { desde: isoToday, hasta: isoToday } });
+      const rows = await listPrestaciones({
+        data: { desde: isoToday, hasta: isoToday, sucursalId },
+      });
       const totalArs = rows.reduce((s, r) => s + Number(r.monto || 0), 0);
       const totalUsd = rows.reduce((s, r) => s + Number(r.monto_usd || 0), 0);
       const pacientes = new Set(rows.map((r) => r.dni)).size;
@@ -40,13 +45,34 @@ function HomePage() {
         <StatCard icon={Activity} label="Prestaciones hoy" value={stats?.count ?? "—"} />
         <StatCard icon={Users} label="Pacientes hoy" value={stats?.pacientes ?? "—"} />
         <StatCard icon={Wallet} label="Facturado ARS" value={stats ? fmt(stats.totalArs) : "—"} />
-        <StatCard icon={Wallet} label="Facturado USD" value={stats ? `U$D ${stats.totalUsd.toLocaleString("es-AR")}` : "—"} />
+        <StatCard
+          icon={Wallet}
+          label="Facturado USD"
+          value={stats ? `U$D ${stats.totalUsd.toLocaleString("es-AR")}` : "—"}
+        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <QuickLink to="/gestion/prestaciones/nueva" icon={ListPlus} title="Nueva prestación" desc="Cargar una atención." />
-        <QuickLink to="/gestion/prestaciones" icon={Table2} title="Ver prestaciones" desc="Filtrar y editar." />
-        {isAdmin && <QuickLink to="/gestion/admin" icon={Settings} title="Administración" desc="Catálogos del sistema." />}
+        <QuickLink
+          to="/gestion/prestaciones/nueva"
+          icon={ListPlus}
+          title="Nueva prestación"
+          desc="Cargar una atención."
+        />
+        <QuickLink
+          to="/gestion/prestaciones"
+          icon={Table2}
+          title="Ver prestaciones"
+          desc="Filtrar y editar."
+        />
+        {isAdmin && (
+          <QuickLink
+            to="/gestion/admin"
+            icon={Settings}
+            title="Administración"
+            desc="Catálogos del sistema."
+          />
+        )}
       </div>
     </div>
   );
@@ -66,7 +92,17 @@ function StatCard({ icon: Icon, label, value }: { icon: any; label: string; valu
   );
 }
 
-function QuickLink({ to, icon: Icon, title, desc }: { to: string; icon: any; title: string; desc: string }) {
+function QuickLink({
+  to,
+  icon: Icon,
+  title,
+  desc,
+}: {
+  to: string;
+  icon: any;
+  title: string;
+  desc: string;
+}) {
   return (
     <Link to={to} className="block">
       <Card className="hover:shadow-md transition-shadow h-full">
