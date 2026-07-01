@@ -45,7 +45,7 @@
 - [x] Agregar `plan text` (nullable) a `nomencladores`.
 - [x] Ajustar índice único: `(obra_social_id, codigo)` → `(obra_social_id, coalesce(plan,''), codigo)` (coalesce porque PG trata null≠null en índices únicos). Migración `drizzle/0003_add_plan_nomencladores.sql`.
 - [x] Aplicada en **staging** (columna + índice verificados).
-- [ ] Aplicar en **main**: pendiente de connection string (el MCP de Neon no ve el proyecto; falta el string de `main`). No bloquea Fases 2/3/5/6, que corren sobre staging.
+- [x] Aplicada en **main** (mismo connection string del `.env`): columnas `plan`+`monto_paciente`, índice único nuevo, índice viejo eliminado, Particular renombrada. Estructura main = staging.
 - [x] Typecheck OK.
 
 ## Fase 2 — ETL (parseo de los 10 archivos) ✅
@@ -69,7 +69,7 @@
 - [x] `scripts/load_nomencladores.mjs`: idempotente (delete+insert por OS), mapea nombres (Amebpba→AMEBPBA, Omint→OMINT, DX Salud→DX Medical).
 - [x] Migración `monto_paciente` (0004) aplicada en staging; `PARTICULAR` → renombrada a **Particular** y `es_particular=false` (Particular = OS ARS normal). Catálogo USD `serviciosParticulares` queda dormante (sin OS esParticular).
 - [x] **1512 filas cargadas en staging** (Biomed con O.S./Paciente, OSDE 6 planes).
-- [ ] **main**: aplicar migraciones 0003+0004 + cargar datos (pendiente del connection string de main).
+- [x] **main**: estructura aplicada (migraciones 0003+0004 + Particular) **+ 1512 precios cargados**. main = staging (estructura y datos).
 
 ## Fase 5 — Página de gestión de precios ✅
 - [x] Ruta `/_app/gestion/precios` + ítem "Precios" en el sidebar.

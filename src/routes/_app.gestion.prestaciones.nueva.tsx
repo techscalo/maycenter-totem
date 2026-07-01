@@ -8,9 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Combobox } from "@/components/ui/combobox";
 import { Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { useUserContext } from "@/lib/gestion/use-auth";
+import { useSucursalActiva } from "@/lib/gestion/sucursal-activa";
 import {
-  listSucursales,
   listPisos,
   listOdontologos,
   listObrasSociales,
@@ -18,6 +17,7 @@ import {
   listServiciosParticulares,
   createAtencion,
 } from "@/lib/gestion/data.server";
+import { esPlacaMio } from "@/lib/gestion/codigos";
 
 export const Route = createFileRoute("/_app/gestion/prestaciones/nueva")({
   component: NuevaPrestacion,
@@ -26,6 +26,8 @@ export const Route = createFileRoute("/_app/gestion/prestaciones/nueva")({
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
+
+type EstadoPlaca = "" | "impresion" | "entrega" | "reimpresion";
 
 type LineItem = {
   key: string;
@@ -37,6 +39,8 @@ type LineItem = {
   monto: number;
   montoUsd: string | number;
   cotizacionUsd: string | number;
+  facturable: boolean;
+  estadoPlaca: EstadoPlaca;
 };
 
 const emptyLine = (): LineItem => ({
@@ -49,6 +53,8 @@ const emptyLine = (): LineItem => ({
   monto: 0,
   montoUsd: "",
   cotizacionUsd: "",
+  facturable: true,
+  estadoPlaca: "",
 });
 
 const emptyHeader = (sucursalDefault: string) => ({
@@ -68,14 +74,10 @@ const emptyHeader = (sucursalDefault: string) => ({
 function NuevaPrestacion() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { profile } = useUserContext();
+  const { sucursalId: sucursalActivaId, sucursales } = useSucursalActiva();
   const [header, setHeader] = useState(emptyHeader(""));
   const [items, setItems] = useState<LineItem[]>([emptyLine()]);
 
-  const { data: sucursales = [] } = useQuery({
-    queryKey: ["sucursales"],
-    queryFn: () => listSucursales(),
-  });
   const { data: obras = [] } = useQuery({
     queryKey: ["obras_sociales_activas"],
     queryFn: async () => (await listObrasSociales()).filter((o) => o.activa),
@@ -86,8 +88,9 @@ function NuevaPrestacion() {
     queryFn: () => listPisos({ data: { sucursalId: header.sucursal_id } }),
   });
   const { data: odontologos = [] } = useQuery({
-    queryKey: ["odontologos", "activos"],
-    queryFn: () => listOdontologos({ data: { soloActivos: true } }),
+    enabled: !!header.sucursal_id,
+    queryKey: ["odontologos", "activos", header.sucursal_id],
+    queryFn: () => listOdontologos({ data: { soloActivos: true, sucursalId: header.sucursal_id } }),
   });
 
   const selectedObra: any = useMemo(
@@ -113,22 +116,24 @@ function NuevaPrestacion() {
     [nomencladores],
   );
   const nomencladoresFiltrados = useMemo(
-    () => (header.plan ? (nomencladores as any[]).filter((n) => n.plan === header.plan) : nomencladores),
+    () =>
+      header.plan ? (nomencladores as any[]).filter((n) => n.plan === header.plan) : nomencladores,
     [nomencladores, header.plan],
   );
 
-  // Sucursal por defecto: sucursal del perfil > única sucursal
+  // La carga se hace en la sucursal activa. Al cambiarla, resetea piso y odontólogo.
   useEffect(() => {
-    if (header.sucursal_id) return;
-    if (profile?.sucursalId) {
-      setHeader((h) => ({ ...h, sucursal_id: profile.sucursalId! }));
-    } else if (sucursales.length === 1) {
-      setHeader((h) => ({ ...h, sucursal_id: (sucursales[0] as any).id }));
-    }
-  }, [profile?.sucursalId, sucursales, header.sucursal_id]);
+    if (!sucursalActivaId || header.sucursal_id === sucursalActivaId) return;
+    setHeader((h) => ({ ...h, sucursal_id: sucursalActivaId, piso_id: "", odontologo_id: "" }));
+  }, [sucursalActivaId, header.sucursal_id]);
 
   const patchItem = (key: string, patch: Partial<LineItem>) =>
     setItems((arr) => arr.map((it) => (it.key === key ? { ...it, ...patch } : it)));
+
+  const esLineaPlacaMio = (it: LineItem) => {
+    const nom: any = nomencladores.find((n: any) => n.id === it.nomencladorId);
+    return esPlacaMio(nom?.codigo, nom?.descripcion ?? it.descripcionManual);
+  };
 
   const onNomencladorChange = (key: string, id: string) => {
     const nom: any = nomencladores.find((n: any) => n.id === id);
@@ -186,6 +191,8 @@ function NuevaPrestacion() {
             monto: Number(it.monto) || 0,
             montoUsd: it.montoUsd === "" ? null : Number(it.montoUsd),
             cotizacionUsd: it.cotizacionUsd === "" ? null : Number(it.cotizacionUsd),
+            facturable: it.facturable,
+            estadoPlaca: it.estadoPlaca || null,
           })),
         },
       });
@@ -260,11 +267,9 @@ function NuevaPrestacion() {
 
             <div>
               <Label>Sucursal</Label>
-              <Combobox
-                options={sucursales.map((s: any) => ({ value: s.id, label: s.nombre }))}
-                value={header.sucursal_id}
-                onChange={(v) => setHeader({ ...header, sucursal_id: v, piso_id: "", odontologo_id: "" })}
-              />
+              <div className="h-10 flex items-center px-3 rounded-md border bg-muted/40 text-sm">
+                {sucursales.find((s) => s.id === header.sucursal_id)?.nombre ?? "—"}
+              </div>
             </div>
             <div>
               <Label>Piso</Label>
@@ -305,7 +310,10 @@ function NuevaPrestacion() {
                 <Combobox
                   options={planes.map((p) => ({ value: p, label: p }))}
                   value={header.plan}
-                  onChange={(v) => { setHeader((h) => ({ ...h, plan: v })); setItems([emptyLine()]); }}
+                  onChange={(v) => {
+                    setHeader((h) => ({ ...h, plan: v }));
+                    setItems([emptyLine()]);
+                  }}
                   placeholder="Elegir plan…"
                 />
               </div>
@@ -368,7 +376,9 @@ function NuevaPrestacion() {
                       }))}
                       value={it.servicioParticularId}
                       onChange={(v) => onServicioChange(it.key, v)}
-                      placeholder={servicios.length === 0 ? "Sin servicios — usá manual" : "Elegir servicio…"}
+                      placeholder={
+                        servicios.length === 0 ? "Sin servicios — usá manual" : "Elegir servicio…"
+                      }
                       searchPlaceholder="Buscar servicio…"
                     />
                   </div>
@@ -483,6 +493,37 @@ function NuevaPrestacion() {
                         />
                       </div>
                     </div>
+                  )}
+                </div>
+              )}
+
+              {header.obra_social_id && (
+                <div className="flex flex-wrap items-center gap-4 border-t pt-3">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={it.facturable}
+                      onChange={(e) => patchItem(it.key, { facturable: e.target.checked })}
+                    />
+                    <span className="text-sm">Facturable</span>
+                  </label>
+                  {esLineaPlacaMio(it) && (
+                    <label className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Placa MIO:</span>
+                      <select
+                        className="h-9 rounded-md border bg-background px-2 text-sm"
+                        value={it.estadoPlaca}
+                        onChange={(e) =>
+                          patchItem(it.key, { estadoPlaca: e.target.value as EstadoPlaca })
+                        }
+                      >
+                        <option value="">—</option>
+                        <option value="impresion">Impresión</option>
+                        <option value="entrega">Entrega</option>
+                        <option value="reimpresion">Reimpresión</option>
+                      </select>
+                    </label>
                   )}
                 </div>
               )}

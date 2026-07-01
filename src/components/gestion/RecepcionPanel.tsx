@@ -1,44 +1,11 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { useSession } from "@/lib/auth-client";
 import { listArrivals, updateArrivalEstado, archiveOldArrivals } from "@/lib/gestion/data.server";
 import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { BrandHeader } from "@/components/BrandHeader";
 import { Archive, RefreshCw, AlertTriangle, Sparkles, Calendar, Clock } from "lucide-react";
-
-export const Route = createFileRoute("/recepcion")({
-  head: () => ({
-    meta: [
-      { title: "Maycenter — Panel de Recepción" },
-      { name: "description", content: "Panel interno para gestionar las llegadas de pacientes." },
-    ],
-  }),
-  component: RecepcionGuard,
-});
-
-function RecepcionGuard() {
-  const { data: session, isPending } = useSession();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!isPending && !session?.user) navigate({ to: "/gestion/login" });
-  }, [isPending, session, navigate]);
-
-  if (isPending) {
-    return (
-      <div className="min-h-screen grid place-items-center text-muted-foreground text-sm">
-        Cargando…
-      </div>
-    );
-  }
-  if (!session?.user) return null;
-
-  return <RecepcionPage />;
-}
 
 type Arrival = {
   id: string;
@@ -102,7 +69,7 @@ function getRange(rango: Rango, desde: string, hasta: string): { from?: Date; to
   return {};
 }
 
-function RecepcionPage() {
+export function RecepcionPanel() {
   const [items, setItems] = useState<Arrival[]>([]);
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [ocultarAtendidos, setOcultarAtendidos] = useState(true);
@@ -161,23 +128,28 @@ function RecepcionPage() {
     load();
   };
 
+  const actions = (
+    <div className="flex items-center gap-2">
+      <Button variant="outline" onClick={load}>
+        <RefreshCw className="mr-2 h-4 w-4" /> Actualizar
+      </Button>
+      <Button variant="outline" onClick={archiveOld}>
+        <Archive className="mr-2 h-4 w-4" /> Archivar antiguos
+      </Button>
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <BrandHeader subtitle="Panel de Recepción" />
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={load}>
-              <RefreshCw className="mr-2 h-4 w-4" /> Actualizar
-            </Button>
-            <Button variant="outline" onClick={archiveOld}>
-              <Archive className="mr-2 h-4 w-4" /> Archivar antiguos
-            </Button>
-          </div>
+    <div>
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-bold">Recepción</h1>
+          <p className="text-sm text-muted-foreground">Llegadas de pacientes en tiempo real.</p>
         </div>
+        {actions}
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main>
         {/* Date range */}
         <div className="mb-6 rounded-2xl border border-border bg-card p-4 flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-muted-foreground mr-2 inline-flex items-center gap-2">

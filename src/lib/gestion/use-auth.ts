@@ -23,6 +23,7 @@ export function useUserContext() {
     user,
     profile: ctx?.profile ?? null,
     roles,
+    sucursales: ctx?.sucursales ?? [],
     isAdmin: roles.includes("admin"),
     isDireccion: roles.includes("direccion"),
     isStaff: roles.includes("admin") || roles.includes("direccion"),

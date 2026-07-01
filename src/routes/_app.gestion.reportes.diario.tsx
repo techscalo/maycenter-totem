@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { listSucursales, listPrestaciones } from "@/lib/gestion/data.server";
+import { listObrasSociales, listOdontologos, listPrestaciones } from "@/lib/gestion/data.server";
+import { useSucursalActiva } from "@/lib/gestion/sucursal-activa";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,22 +31,33 @@ export const Route = createFileRoute("/_app/gestion/reportes/diario")({
 });
 
 function ReporteDiarioPage() {
+  const { sucursalId, sucursalNombre } = useSucursalActiva();
   const [fecha, setFecha] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [sucursalId, setSucursalId] = useState<string>("all");
+  const [obraSocialId, setObraSocialId] = useState<string>("all");
+  const [odontologoId, setOdontologoId] = useState<string>("all");
 
-  const { data: sucursales } = useQuery({
-    queryKey: ["sucursales"],
-    queryFn: () => listSucursales(),
+  const { data: obrasSociales } = useQuery({
+    queryKey: ["obras-sociales"],
+    queryFn: () => listObrasSociales(),
+  });
+
+  const { data: odontologos } = useQuery({
+    enabled: !!sucursalId,
+    queryKey: ["odontologos", sucursalId],
+    queryFn: () => listOdontologos({ data: { sucursalId } }),
   });
 
   const { data: rows } = useQuery({
-    queryKey: ["reporte-diario", fecha, sucursalId],
+    enabled: !!sucursalId,
+    queryKey: ["reporte-diario", fecha, sucursalId, obraSocialId, odontologoId],
     queryFn: () =>
       listPrestaciones({
         data: {
           desde: fecha,
           hasta: fecha,
-          ...(sucursalId !== "all" ? { sucursalId } : {}),
+          sucursalId,
+          ...(obraSocialId !== "all" ? { obraSocialId } : {}),
+          ...(odontologoId !== "all" ? { odontologoId } : {}),
           limit: 2000,
         },
       }),
@@ -64,6 +76,7 @@ function ReporteDiarioPage() {
     const r = rows ?? [];
     return {
       cantidad: r.length,
+      pacientes: new Set(r.map((x: any) => x.atencion_id)).size,
       ars: r.reduce((s: number, x: any) => s + Number(x.monto || 0), 0),
       usd: r.reduce((s: number, x: any) => s + Number(x.monto_usd || 0), 0),
     };
@@ -72,8 +85,14 @@ function ReporteDiarioPage() {
   const fmt = (n: number) =>
     n.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
 
-  const sucursalNombre =
-    sucursalId === "all" ? "Todas" : sucursales?.find((s) => s.id === sucursalId)?.nombre ?? "";
+  const obraNombre =
+    obraSocialId === "all"
+      ? "Todas"
+      : (obrasSociales?.find((o) => o.id === obraSocialId)?.nombre ?? "");
+  const odontologoNombre =
+    odontologoId === "all"
+      ? "Todos"
+      : (odontologos?.find((o) => o.id === odontologoId)?.nombre ?? "");
 
   const exportRows = (rows ?? []).map((r: any) => ({
     Fecha: r.fecha,
@@ -91,15 +110,23 @@ function ReporteDiarioPage() {
     MontoUSD: r.monto_usd ? Number(r.monto_usd) : "",
   }));
 
-  const onExcel = () =>
-    downloadExcel(`reporte-diario-${fecha}.xlsx`, "Diario", exportRows);
+  const onExcel = () => downloadExcel(`reporte-diario-${fecha}.xlsx`, "Diario", exportRows);
 
   const onPdf = () => {
     downloadPdf(
       `reporte-diario-${fecha}.pdf`,
       `Reporte diario — ${format(new Date(fecha + "T00:00"), "dd/MM/yyyy")}`,
-      `Sucursal: ${sucursalNombre}`,
-      ["Odontólogo", "Paciente", "DNI", "Obra social", "Código", "Descripción", "Cant.", "Monto ARS"],
+      `Sucursal: ${sucursalNombre} · Obra social: ${obraNombre} · Odontólogo: ${odontologoNombre}`,
+      [
+        "Odontólogo",
+        "Paciente",
+        "DNI",
+        "Obra social",
+        "Código",
+        "Descripción",
+        "Cant.",
+        "Monto ARS",
+      ],
       (rows ?? []).map((r: any) => [
         r.odontologos?.nombre ?? "",
         r.paciente,
@@ -110,7 +137,7 @@ function ReporteDiarioPage() {
         r.cantidad,
         fmt(Number(r.monto)),
       ]),
-      `Total: ${total.cantidad} prestaciones · ${fmt(total.ars)}${total.usd ? ` · U$D ${total.usd.toLocaleString("es-AR")}` : ""}`,
+      `Total: ${total.pacientes} pacientes · ${total.cantidad} prestaciones · ${fmt(total.ars)}${total.usd ? ` · U$D ${total.usd.toLocaleString("es-AR")}` : ""}`,
     );
   };
 
@@ -118,28 +145,50 @@ function ReporteDiarioPage() {
     <div className="max-w-7xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Reporte diario</h1>
-        <p className="text-sm text-muted-foreground">Agrupado por odontólogo. Exportable a Excel y PDF.</p>
+        <p className="text-sm text-muted-foreground">
+          Agrupado por odontólogo. Exportable a Excel y PDF.
+        </p>
       </div>
 
       <Card>
-        <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+        <CardContent className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
           <div>
             <Label>Fecha</Label>
             <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
           </div>
           <div>
-            <Label>Sucursal</Label>
-            <Select value={sucursalId} onValueChange={setSucursalId}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+            <Label>Obra social</Label>
+            <Select value={obraSocialId} onValueChange={setObraSocialId}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas</SelectItem>
-                {(sucursales ?? []).map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
+                {(obrasSociales ?? []).map((o) => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.nombre}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <div className="md:col-span-2 flex gap-2 justify-end">
+          <div>
+            <Label>Odontólogo</Label>
+            <Select value={odontologoId} onValueChange={setOdontologoId}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                {(odontologos ?? []).map((o) => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="md:col-span-3 flex gap-2 justify-end">
             <Button variant="outline" onClick={onExcel} disabled={!rows?.length}>
               <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel
             </Button>
@@ -150,14 +199,19 @@ function ReporteDiarioPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Kpi label="Pacientes" value={total.pacientes} />
         <Kpi label="Prestaciones" value={total.cantidad} />
         <Kpi label="Facturado ARS" value={fmt(total.ars)} />
         <Kpi label="Facturado USD" value={`U$D ${total.usd.toLocaleString("es-AR")}`} />
       </div>
 
       {grupos.length === 0 && (
-        <Card><CardContent className="p-8 text-center text-muted-foreground">Sin prestaciones para esta fecha.</CardContent></Card>
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">
+            Sin prestaciones para esta fecha.
+          </CardContent>
+        </Card>
       )}
 
       {grupos.map(([odo, items]) => {
@@ -168,7 +222,8 @@ function ReporteDiarioPage() {
               <div className="px-4 py-3 border-b flex justify-between items-center bg-muted/40">
                 <div className="font-semibold">{odo}</div>
                 <div className="text-sm text-muted-foreground">
-                  {items.length} prestaciones · <span className="font-medium text-foreground">{fmt(subtotal)}</span>
+                  {items.length} prestaciones ·{" "}
+                  <span className="font-medium text-foreground">{fmt(subtotal)}</span>
                 </div>
               </div>
               <Table>
@@ -190,9 +245,13 @@ function ReporteDiarioPage() {
                       <TableCell>{r.dni}</TableCell>
                       <TableCell>{r.obras_sociales?.nombre}</TableCell>
                       <TableCell>{r.nomencladores?.codigo ?? r.codigo_manual}</TableCell>
-                      <TableCell className="text-xs">{r.nomencladores?.descripcion ?? r.descripcion_manual}</TableCell>
+                      <TableCell className="text-xs">
+                        {r.nomencladores?.descripcion ?? r.descripcion_manual}
+                      </TableCell>
                       <TableCell className="text-right">{r.cantidad}</TableCell>
-                      <TableCell className="text-right font-medium">{fmt(Number(r.monto))}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {fmt(Number(r.monto))}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

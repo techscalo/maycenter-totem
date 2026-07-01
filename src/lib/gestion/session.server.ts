@@ -2,7 +2,7 @@ import { getRequestHeaders } from "@tanstack/react-start/server";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/db/client";
-import { profiles, userRoles } from "@/db/schema";
+import { userRoles, userSucursales } from "@/db/schema";
 
 export type AppRole = "admin" | "administrativo" | "direccion" | "odontologo";
 
@@ -11,7 +11,7 @@ export type AuthCtx = {
   roles: AppRole[];
   isStaff: boolean;
   isAdmin: boolean;
-  sucursalId: string | null;
+  sucursalIds: string[];
 };
 
 export async function requireAuth(): Promise<AuthCtx> {
@@ -26,18 +26,17 @@ export async function requireAuth(): Promise<AuthCtx> {
     .where(eq(userRoles.userId, userId));
   const roles = roleRows.map((r) => r.role as AppRole);
 
-  const [prof] = await db
-    .select({ sucursalId: profiles.sucursalId })
-    .from(profiles)
-    .where(eq(profiles.userId, userId))
-    .limit(1);
+  const sucRows = await db
+    .select({ sucursalId: userSucursales.sucursalId })
+    .from(userSucursales)
+    .where(eq(userSucursales.userId, userId));
 
   return {
     userId,
     roles,
     isStaff: roles.includes("admin") || roles.includes("direccion"),
     isAdmin: roles.includes("admin"),
-    sucursalId: prof?.sucursalId ?? null,
+    sucursalIds: sucRows.map((r) => r.sucursalId),
   };
 }
 

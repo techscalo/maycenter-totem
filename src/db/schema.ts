@@ -54,6 +54,23 @@ export const userRoles = pgTable(
   }),
 );
 
+// Sucursales asignadas a cada usuario (acceso). 1 fila = una sede, 2 = ambas.
+// Fuente de verdad del acceso por sede (reemplaza a profiles.sucursalId).
+export const userSucursales = pgTable(
+  "user_sucursales",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id").notNull(),
+    sucursalId: uuid("sucursal_id")
+      .notNull()
+      .references(() => sucursales.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userSucursalUq: uniqueIndex("user_sucursales_user_sucursal_uq").on(t.userId, t.sucursalId),
+  }),
+);
+
 // Pisos por sucursal
 export const pisos = pgTable(
   "pisos",
@@ -205,6 +222,10 @@ export const atencionItems = pgTable(
     monto: numeric("monto", { precision: 12, scale: 2 }).notNull().default("0"),
     montoUsd: numeric("monto_usd", { precision: 12, scale: 2 }),
     cotizacionUsd: numeric("cotizacion_usd", { precision: 12, scale: 2 }),
+    // Para reportes de trabajos no facturables (pruebas, escaneos, impresiones).
+    facturable: boolean("facturable").notNull().default(true),
+    // Estado de placa MIO (impresion/entrega/reimpresion). null = no aplica.
+    estadoPlaca: text("estado_placa"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

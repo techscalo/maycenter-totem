@@ -2,7 +2,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  listSucursales,
   listObrasSociales,
   listOdontologos,
   listPrestaciones,
@@ -10,17 +9,27 @@ import {
   updateAtencionItem,
   updateAtencionCabecera,
 } from "@/lib/gestion/data.server";
+import { useSucursalActiva } from "@/lib/gestion/sucursal-activa";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
 import { Pencil, Trash2, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/_app/gestion/prestaciones/")({
@@ -57,35 +66,33 @@ function dateNDaysAgoISO(n: number) {
 
 function PrestacionesList() {
   const qc = useQueryClient();
+  const { sucursalId } = useSucursalActiva();
   const [desde, setDesde] = useState(todayISO());
   const [hasta, setHasta] = useState(todayISO());
-  const [sucursalId, setSucursalId] = useState<string>("");
   const [obraSocialId, setObraSocialId] = useState<string>("");
   const [odontologoId, setOdontologoId] = useState<string>("");
   const [busqueda, setBusqueda] = useState("");
   const [editing, setEditing] = useState<Prestacion | null>(null);
 
-  const { data: sucursales = [] } = useQuery({
-    queryKey: ["sucursales"],
-    queryFn: () => listSucursales(),
-  });
   const { data: obras = [] } = useQuery({
     queryKey: ["obras_sociales"],
     queryFn: () => listObrasSociales(),
   });
   const { data: odontologos = [] } = useQuery({
-    queryKey: ["odontologos"],
-    queryFn: () => listOdontologos({ data: {} }),
+    enabled: !!sucursalId,
+    queryKey: ["odontologos", sucursalId],
+    queryFn: () => listOdontologos({ data: { sucursalId } }),
   });
 
   const { data: rows = [], isLoading } = useQuery({
+    enabled: !!sucursalId,
     queryKey: ["prestaciones", desde, hasta, sucursalId, obraSocialId, odontologoId],
     queryFn: () =>
       listPrestaciones({
         data: {
           desde,
           hasta,
-          ...(sucursalId ? { sucursalId } : {}),
+          sucursalId,
           ...(obraSocialId ? { obraSocialId } : {}),
           ...(odontologoId ? { odontologoId } : {}),
         },
@@ -169,10 +176,25 @@ function PrestacionesList() {
       <Card>
         <CardContent className="p-4 space-y-4">
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => setRange(1)}>Hoy</Button>
-            <Button variant="outline" size="sm" onClick={() => setRange(7)}>Últimos 7</Button>
-            <Button variant="outline" size="sm" onClick={() => setRange(30)}>Últimos 30</Button>
-            <Button variant="outline" size="sm" onClick={() => { setDesde("2000-01-01"); setHasta(todayISO()); }}>Históricos</Button>
+            <Button variant="outline" size="sm" onClick={() => setRange(1)}>
+              Hoy
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setRange(7)}>
+              Últimos 7
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setRange(30)}>
+              Últimos 30
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDesde("2000-01-01");
+                setHasta(todayISO());
+              }}
+            >
+              Históricos
+            </Button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
             <div>
@@ -184,39 +206,61 @@ function PrestacionesList() {
               <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
             </div>
             <div>
-              <Label className="text-xs">Sucursal</Label>
-              <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm" value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
-                <option value="">Todas</option>
-                {sucursales.map((s: any) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-              </select>
-            </div>
-            <div>
               <Label className="text-xs">Obra social</Label>
-              <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm" value={obraSocialId} onChange={(e) => setObraSocialId(e.target.value)}>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                value={obraSocialId}
+                onChange={(e) => setObraSocialId(e.target.value)}
+              >
                 <option value="">Todas</option>
-                {obras.map((o: any) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+                {obras.map((o: any) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nombre}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
               <Label className="text-xs">Odontólogo</Label>
-              <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm" value={odontologoId} onChange={(e) => setOdontologoId(e.target.value)}>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                value={odontologoId}
+                onChange={(e) => setOdontologoId(e.target.value)}
+              >
                 <option value="">Todos</option>
-                {odontologos.map((o: any) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+                {odontologos.map((o: any) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nombre}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
               <Label className="text-xs">Buscar</Label>
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input className="pl-8" placeholder="Paciente, DNI, código…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
+                <Input
+                  className="pl-8"
+                  placeholder="Paciente, DNI, código…"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                />
               </div>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-4 pt-2 border-t text-sm">
-            <div><span className="text-muted-foreground">Resultados:</span> <b>{totals.count}</b></div>
-            <div><span className="text-muted-foreground">Facturado ARS:</span> <b>{fmtArs(totals.ars)}</b></div>
-            <div><span className="text-muted-foreground">USD:</span> <b>U$D {totals.usd.toLocaleString("es-AR")}</b></div>
+            <div>
+              <span className="text-muted-foreground">Resultados:</span> <b>{totals.count}</b>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Facturado ARS:</span>{" "}
+              <b>{fmtArs(totals.ars)}</b>
+            </div>
+            <div>
+              <span className="text-muted-foreground">USD:</span>{" "}
+              <b>U$D {totals.usd.toLocaleString("es-AR")}</b>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -243,10 +287,18 @@ function PrestacionesList() {
             </TableHeader>
             <TableBody>
               {isLoading && (
-                <TableRow><TableCell colSpan={13} className="text-center py-8 text-muted-foreground">Cargando…</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
+                    Cargando…
+                  </TableCell>
+                </TableRow>
               )}
               {!isLoading && filtered.length === 0 && (
-                <TableRow><TableCell colSpan={13} className="text-center py-8 text-muted-foreground">Sin resultados.</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
+                    Sin resultados.
+                  </TableCell>
+                </TableRow>
               )}
               {filtered.map((r) => (
                 <TableRow key={r.id}>
@@ -258,10 +310,14 @@ function PrestacionesList() {
                   <TableCell>{r.pisos?.nombre}</TableCell>
                   <TableCell>{r.odontologos?.nombre}</TableCell>
                   <TableCell>{r.nomencladores?.codigo || r.codigo_manual}</TableCell>
-                  <TableCell className="max-w-[260px] truncate">{r.nomencladores?.descripcion || r.descripcion_manual}</TableCell>
+                  <TableCell className="max-w-[260px] truncate">
+                    {r.nomencladores?.descripcion || r.descripcion_manual}
+                  </TableCell>
                   <TableCell className="text-right">{r.cantidad}</TableCell>
                   <TableCell className="text-right">{fmtArs(Number(r.monto || 0))}</TableCell>
-                  <TableCell className="text-right">{r.monto_usd ? `U$D ${r.monto_usd}` : "—"}</TableCell>
+                  <TableCell className="text-right">
+                    {r.monto_usd ? `U$D ${r.monto_usd}` : "—"}
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
                       <Button size="icon" variant="ghost" onClick={() => setEditing(r)}>
@@ -295,34 +351,72 @@ function PrestacionesList() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Paciente</Label>
-                  <Input value={editing.paciente} onChange={(e) => setEditing({ ...editing, paciente: e.target.value })} />
+                  <Input
+                    value={editing.paciente}
+                    onChange={(e) => setEditing({ ...editing, paciente: e.target.value })}
+                  />
                 </div>
                 <div>
                   <Label>DNI</Label>
-                  <Input value={editing.dni} onChange={(e) => setEditing({ ...editing, dni: e.target.value })} />
+                  <Input
+                    value={editing.dni}
+                    onChange={(e) => setEditing({ ...editing, dni: e.target.value })}
+                  />
                 </div>
                 <div>
                   <Label>Cantidad</Label>
-                  <Input type="number" min={1} value={editing.cantidad} onChange={(e) => setEditing({ ...editing, cantidad: Number(e.target.value) })} />
+                  <Input
+                    type="number"
+                    min={1}
+                    value={editing.cantidad}
+                    onChange={(e) => setEditing({ ...editing, cantidad: Number(e.target.value) })}
+                  />
                 </div>
                 <div>
                   <Label>Monto ARS</Label>
-                  <Input type="number" min={0} step="0.01" value={editing.monto} onChange={(e) => setEditing({ ...editing, monto: Number(e.target.value) })} />
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={editing.monto}
+                    onChange={(e) => setEditing({ ...editing, monto: Number(e.target.value) })}
+                  />
                 </div>
                 <div>
                   <Label>Monto USD</Label>
-                  <Input type="number" min={0} step="0.01" value={editing.monto_usd ?? ""} onChange={(e) => setEditing({ ...editing, monto_usd: e.target.value === "" ? null : Number(e.target.value) })} />
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={editing.monto_usd ?? ""}
+                    onChange={(e) =>
+                      setEditing({
+                        ...editing,
+                        monto_usd: e.target.value === "" ? null : Number(e.target.value),
+                      })
+                    }
+                  />
                 </div>
               </div>
               <div>
                 <Label>Observaciones</Label>
-                <Input value={editing.observaciones ?? ""} onChange={(e) => setEditing({ ...editing, observaciones: e.target.value })} />
+                <Input
+                  value={editing.observaciones ?? ""}
+                  onChange={(e) => setEditing({ ...editing, observaciones: e.target.value })}
+                />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
-            <Button onClick={() => editing && updateMut.mutate(editing)} disabled={updateMut.isPending}>Guardar</Button>
+            <Button variant="outline" onClick={() => setEditing(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => editing && updateMut.mutate(editing)}
+              disabled={updateMut.isPending}
+            >
+              Guardar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
