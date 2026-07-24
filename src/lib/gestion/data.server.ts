@@ -127,6 +127,25 @@ export const listServiciosParticulares = createServerFn({ method: "GET" }).handl
     .orderBy(asc(serviciosParticulares.descripcion));
 });
 
+// Pública (la usa el tótem sin login y el selector inicial): sucursales con slug + sus pisos.
+export const getSucursalesTotem = createServerFn({ method: "GET" }).handler(async () => {
+  const sucs = await db
+    .select({ id: sucursales.id, nombre: sucursales.nombre, slug: sucursales.slug })
+    .from(sucursales)
+    .orderBy(asc(sucursales.nombre));
+  const allPisos = await db
+    .select({ nombre: pisos.nombre, sucursalId: pisos.sucursalId })
+    .from(pisos)
+    .orderBy(asc(pisos.nombre));
+  return sucs
+    .filter((s) => !!s.slug)
+    .map((s) => ({
+      slug: s.slug as string,
+      nombre: s.nombre,
+      pisos: allPisos.filter((p) => p.sucursalId === s.id).map((p) => p.nombre),
+    }));
+});
+
 // ---------------------------------------------------------------------------
 // Prestaciones (vista plana: 1 fila = 1 item de atención)
 // ---------------------------------------------------------------------------

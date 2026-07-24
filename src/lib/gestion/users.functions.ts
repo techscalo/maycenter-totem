@@ -7,7 +7,7 @@ import { profiles, userRoles, sucursales, userSucursales } from "@/db/schema";
 import { user as userTable, account as accountTable } from "@/db/auth-schema";
 import { requireAdmin } from "@/lib/gestion/session.server";
 
-const roleEnum = z.enum(["admin", "administrativo", "direccion", "odontologo"]);
+const roleEnum = z.enum(["admin", "administrativo", "direccion", "odontologo", "recepcionista"]);
 
 async function hashPassword(password: string): Promise<string> {
   const ctx = await auth.$context;

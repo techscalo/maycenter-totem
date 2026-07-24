@@ -14,7 +14,13 @@ import {
 import { sql } from "drizzle-orm";
 
 // Roles de la app (ex-Supabase app_role)
-export const appRole = pgEnum("app_role", ["admin", "administrativo", "direccion", "odontologo"]);
+export const appRole = pgEnum("app_role", [
+  "admin",
+  "administrativo",
+  "direccion",
+  "odontologo",
+  "recepcionista",
+]);
 
 // Clínicas / sucursales
 export const sucursales = pgTable("sucursales", {

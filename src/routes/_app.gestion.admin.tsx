@@ -15,7 +15,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Trash2, Plus, Check, X, Search } from "lucide-react";
+import {
+  Trash2,
+  Plus,
+  Check,
+  X,
+  Search,
+  Copy,
+  ExternalLink,
+  MonitorSmartphone,
+} from "lucide-react";
 import { useUserContext } from "@/lib/gestion/use-auth";
 import {
   listSucursales,
@@ -39,6 +48,7 @@ import {
   createServicioParticular,
   updateServicioParticular,
   deleteServicioParticular,
+  getSucursalesTotem,
 } from "@/lib/gestion/data.server";
 import {
   listGestionUsers,
@@ -80,6 +90,7 @@ function AdminPage() {
           <TabsTrigger value="odontologos">Odontólogos</TabsTrigger>
           <TabsTrigger value="nomencladores">Nomencladores</TabsTrigger>
           <TabsTrigger value="particulares">Particulares</TabsTrigger>
+          <TabsTrigger value="totem">Tótem</TabsTrigger>
           {isAdmin && <TabsTrigger value="usuarios">Usuarios</TabsTrigger>}
         </TabsList>
         <TabsContent value="sucursales">
@@ -99,6 +110,9 @@ function AdminPage() {
         </TabsContent>
         <TabsContent value="particulares">
           <ParticularesTab />
+        </TabsContent>
+        <TabsContent value="totem">
+          <TotemLinksTab />
         </TabsContent>
         {isAdmin && (
           <TabsContent value="usuarios">
@@ -855,9 +869,9 @@ function UsuariosTab() {
   const [email, setEmail] = useState("");
   const [nombre, setNombre] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"admin" | "administrativo" | "direccion" | "odontologo">(
-    "administrativo",
-  );
+  const [role, setRole] = useState<
+    "admin" | "administrativo" | "direccion" | "odontologo" | "recepcionista"
+  >("administrativo");
   // "all" = todas las sedes; un id = solo esa sede.
   const [sucursalSel, setSucursalSel] = useState<string>("all");
 
@@ -941,6 +955,7 @@ function UsuariosTab() {
                   <SelectItem value="direccion">Dirección</SelectItem>
                   <SelectItem value="administrativo">Administrativo</SelectItem>
                   <SelectItem value="odontologo">Odontólogo</SelectItem>
+                  <SelectItem value="recepcionista">Recepcionista</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1009,6 +1024,7 @@ function UsuariosTab() {
                         <SelectItem value="direccion">Dirección</SelectItem>
                         <SelectItem value="administrativo">Administrativo</SelectItem>
                         <SelectItem value="odontologo">Odontólogo</SelectItem>
+                        <SelectItem value="recepcionista">Recepcionista</SelectItem>
                       </SelectContent>
                     </Select>
                   </TableCell>
@@ -1073,5 +1089,68 @@ function UsuariosTab() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function TotemLinksTab() {
+  const { data: sucs = [] } = useQuery({
+    queryKey: ["totem-sucursales-admin"],
+    queryFn: () => getSucursalesTotem(),
+  });
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const buildUrl = (slug: string, piso: string | null) =>
+    `${origin}/?clinica=${slug}${piso ? `&piso=${encodeURIComponent(piso)}` : ""}`;
+  const copy = (url: string) => {
+    navigator.clipboard.writeText(url);
+    toast.success("Link copiado");
+  };
+
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-5">
+        <p className="text-sm text-muted-foreground">
+          Links de acceso rápido al tótem por clínica y piso. Abrí el link correspondiente en cada
+          tablet: el tótem queda configurado para esa clínica/piso.
+        </p>
+        {sucs.map((s: any) => (
+          <div key={s.slug} className="space-y-2">
+            <div className="flex items-center gap-2 font-semibold">
+              <MonitorSmartphone className="h-4 w-4 text-muted-foreground" />
+              {s.nombre}
+              <span className="text-xs font-normal text-muted-foreground">({s.slug})</span>
+            </div>
+            <div className="space-y-2 pl-6">
+              {(s.pisos.length ? s.pisos : [null]).map((piso: string | null) => {
+                const url = buildUrl(s.slug, piso);
+                return (
+                  <div
+                    key={piso ?? "base"}
+                    className="flex flex-wrap items-center gap-2 rounded-md border p-2"
+                  >
+                    <span className="text-sm font-medium w-20">
+                      {piso ? `Piso ${piso}` : "General"}
+                    </span>
+                    <code className="text-xs bg-muted px-2 py-1 rounded flex-1 min-w-[200px] truncate">
+                      {url}
+                    </code>
+                    <Button size="sm" variant="outline" onClick={() => copy(url)}>
+                      <Copy className="h-4 w-4 mr-1" /> Copiar
+                    </Button>
+                    <Button size="sm" asChild>
+                      <a href={url} target="_blank" rel="noreferrer">
+                        <ExternalLink className="h-4 w-4 mr-1" /> Abrir
+                      </a>
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {sucs.length === 0 && (
+          <p className="text-sm text-muted-foreground">Sin sucursales con slug configurado.</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
