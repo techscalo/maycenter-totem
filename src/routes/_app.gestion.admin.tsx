@@ -1,5 +1,5 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Trash2, Plus, Check, X } from "lucide-react";
+import { Trash2, Plus, Check, X, Search } from "lucide-react";
 import { useUserContext } from "@/lib/gestion/use-auth";
 import {
   listSucursales,
@@ -59,15 +59,17 @@ export const Route = createFileRoute("/_app/gestion/admin")({
 });
 
 function AdminPage() {
-  const { isAdmin, isLoading } = useUserContext();
+  const { isAdmin, roles, isLoading } = useUserContext();
+  const puedeConfigurar =
+    isAdmin || roles.includes("direccion") || roles.includes("administrativo");
   if (isLoading) return <div className="text-sm text-muted-foreground">Cargando…</div>;
-  if (!isAdmin) return <Navigate to="/gestion" />;
+  if (!puedeConfigurar) return <Navigate to="/gestion" />;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Administración</h1>
-        <p className="text-sm text-muted-foreground">Catálogos del sistema.</p>
+        <h1 className="text-2xl font-bold">Configuración</h1>
+        <p className="text-sm text-muted-foreground">Catálogos y ajustes del sistema.</p>
       </div>
 
       <Tabs defaultValue="sucursales">
@@ -78,7 +80,7 @@ function AdminPage() {
           <TabsTrigger value="odontologos">Odontólogos</TabsTrigger>
           <TabsTrigger value="nomencladores">Nomencladores</TabsTrigger>
           <TabsTrigger value="particulares">Particulares</TabsTrigger>
-          <TabsTrigger value="usuarios">Usuarios</TabsTrigger>
+          {isAdmin && <TabsTrigger value="usuarios">Usuarios</TabsTrigger>}
         </TabsList>
         <TabsContent value="sucursales">
           <SucursalesTab />
@@ -98,9 +100,11 @@ function AdminPage() {
         <TabsContent value="particulares">
           <ParticularesTab />
         </TabsContent>
-        <TabsContent value="usuarios">
-          <UsuariosTab />
-        </TabsContent>
+        {isAdmin && (
+          <TabsContent value="usuarios">
+            <UsuariosTab />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
@@ -512,6 +516,13 @@ function NomencladoresTab() {
   });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["nomencladores_admin", obraId] });
 
+  const [busqueda, setBusqueda] = useState("");
+  const dataFiltrada = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return data;
+    return data.filter((n: any) => `${n.codigo} ${n.descripcion}`.toLowerCase().includes(q));
+  }, [data, busqueda]);
+
   const [form, setForm] = useState({ codigo: "", descripcion: "", monto: 0 });
   const create = useMutation({
     mutationFn: () =>
@@ -596,6 +607,21 @@ function NomencladoresTab() {
               </Button>
             </div>
 
+            <div className="relative md:w-96">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar por código o descripción…"
+                className="pl-9"
+              />
+              {busqueda && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                  {dataFiltrada.length}
+                </span>
+              )}
+            </div>
+
             <Table>
               <TableHeader>
                 <TableRow>
@@ -606,7 +632,7 @@ function NomencladoresTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.map((n: any) => (
+                {dataFiltrada.map((n: any) => (
                   <TableRow key={n.id}>
                     <TableCell className="font-mono">{n.codigo}</TableCell>
                     <TableCell>{n.descripcion}</TableCell>
@@ -634,10 +660,12 @@ function NomencladoresTab() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {data.length === 0 && (
+                {dataFiltrada.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
-                      Sin códigos cargados.
+                      {busqueda.trim()
+                        ? "Sin resultados para la búsqueda."
+                        : "Sin códigos cargados."}
                     </TableCell>
                   </TableRow>
                 )}
@@ -657,6 +685,13 @@ function ParticularesTab() {
     queryFn: () => listServiciosParticularesAdmin(),
   });
   const invalidate = () => qc.invalidateQueries({ queryKey: ["servicios_particulares", "admin"] });
+
+  const [busqueda, setBusqueda] = useState("");
+  const dataFiltrada = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return data;
+    return data.filter((s: any) => `${s.codigo ?? ""} ${s.descripcion}`.toLowerCase().includes(q));
+  }, [data, busqueda]);
 
   const [form, setForm] = useState({ codigo: "", descripcion: "", precio_usd: 0 });
   const create = useMutation({
@@ -726,6 +761,20 @@ function ParticularesTab() {
             Agregar
           </Button>
         </div>
+        <div className="relative md:w-96">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por código o descripción…"
+            className="pl-9"
+          />
+          {busqueda && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+              {dataFiltrada.length}
+            </span>
+          )}
+        </div>
         <Table>
           <TableHeader>
             <TableRow>
@@ -736,7 +785,7 @@ function ParticularesTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.map((s: any) => (
+            {dataFiltrada.map((s: any) => (
               <TableRow key={s.id}>
                 <TableCell className="font-mono">{s.codigo ?? "—"}</TableCell>
                 <TableCell>{s.descripcion}</TableCell>
@@ -764,10 +813,10 @@ function ParticularesTab() {
                 </TableCell>
               </TableRow>
             ))}
-            {data.length === 0 && (
+            {dataFiltrada.length === 0 && (
               <TableRow>
                 <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
-                  Sin servicios cargados.
+                  {busqueda.trim() ? "Sin resultados para la búsqueda." : "Sin servicios cargados."}
                 </TableCell>
               </TableRow>
             )}

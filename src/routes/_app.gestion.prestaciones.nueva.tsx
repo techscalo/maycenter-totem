@@ -16,10 +16,16 @@ import {
   listNomencladores,
   listServiciosParticulares,
   createAtencion,
+  getPacienteByDni,
 } from "@/lib/gestion/data.server";
 import { esPlacaMio } from "@/lib/gestion/codigos";
 
 export const Route = createFileRoute("/_app/gestion/prestaciones/nueva")({
+  // Prefill opcional desde Recepción (?dni=...&nombre=...).
+  validateSearch: (s: Record<string, unknown>): { dni?: string; nombre?: string } => ({
+    dni: s.dni != null && s.dni !== "" ? String(s.dni) : undefined,
+    nombre: typeof s.nombre === "string" && s.nombre ? s.nombre : undefined,
+  }),
   component: NuevaPrestacion,
 });
 
@@ -74,8 +80,13 @@ const emptyHeader = (sucursalDefault: string) => ({
 function NuevaPrestacion() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { dni: dniParam, nombre: nombreParam } = Route.useSearch();
   const { sucursalId: sucursalActivaId, sucursales } = useSucursalActiva();
-  const [header, setHeader] = useState(emptyHeader(""));
+  const [header, setHeader] = useState(() => ({
+    ...emptyHeader(""),
+    dni: dniParam ?? "",
+    paciente: nombreParam ?? "",
+  }));
   const [items, setItems] = useState<LineItem[]>([emptyLine()]);
 
   const { data: obras = [] } = useQuery({
@@ -126,6 +137,28 @@ function NuevaPrestacion() {
     if (!sucursalActivaId || header.sucursal_id === sucursalActivaId) return;
     setHeader((h) => ({ ...h, sucursal_id: sucursalActivaId, piso_id: "", odontologo_id: "" }));
   }, [sucursalActivaId, header.sucursal_id]);
+
+  // Al completar el DNI: si el paciente existe, autocompleta nombre/OS; si no existe,
+  // lo marca como primera consulta (paciente nuevo).
+  const onDniBlur = async () => {
+    const dni = header.dni.trim();
+    if (dni.length < 6) return;
+    try {
+      const p = await getPacienteByDni({ data: { dni } });
+      if (p) {
+        setHeader((h) => ({
+          ...h,
+          paciente: h.paciente.trim() || p.nombre,
+          obra_social_id: h.obra_social_id || p.obra_social_id || "",
+          primera_vez: false,
+        }));
+      } else {
+        setHeader((h) => ({ ...h, primera_vez: true }));
+      }
+    } catch {
+      /* silencioso: si falla el autocompletado, el usuario carga a mano */
+    }
+  };
 
   const patchItem = (key: string, patch: Partial<LineItem>) =>
     setItems((arr) => arr.map((it) => (it.key === key ? { ...it, ...patch } : it)));
@@ -243,6 +276,7 @@ function NuevaPrestacion() {
                 inputMode="numeric"
                 value={header.dni}
                 onChange={(e) => setHeader({ ...header, dni: e.target.value.replace(/\D/g, "") })}
+                onBlur={onDniBlur}
               />
             </div>
             <div>

@@ -1,9 +1,20 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { listPrestaciones } from "@/lib/gestion/data.server";
+import { getResumenRecepcion } from "@/lib/gestion/ghl.server";
 import { useSucursalActiva } from "@/lib/gestion/sucursal-activa";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ListPlus, Table2, Settings, Wallet, Users, Activity } from "lucide-react";
+import {
+  ListPlus,
+  Table2,
+  Settings,
+  Wallet,
+  Users,
+  Activity,
+  CalendarClock,
+  Clock,
+  UserCheck,
+} from "lucide-react";
 import { useUserContext } from "@/lib/gestion/use-auth";
 
 export const Route = createFileRoute("/_app/gestion/")({
@@ -11,7 +22,9 @@ export const Route = createFileRoute("/_app/gestion/")({
 });
 
 function HomePage() {
-  const { profile, isAdmin } = useUserContext();
+  const { profile, isAdmin, roles } = useUserContext();
+  const puedeConfigurar =
+    isAdmin || roles.includes("direccion") || roles.includes("administrativo");
   const { sucursalId } = useSucursalActiva();
 
   const { data: stats } = useQuery({
@@ -27,6 +40,15 @@ function HomePage() {
       const pacientes = new Set(rows.map((r) => r.dni)).size;
       return { count: rows.length, totalArs, totalUsd, pacientes };
     },
+  });
+
+  const { data: recepcion } = useQuery({
+    enabled: !!sucursalId,
+    queryKey: ["gestion-home-recepcion", sucursalId],
+    queryFn: () =>
+      getResumenRecepcion({
+        data: { sucursalId, fecha: new Date().toISOString().slice(0, 10) },
+      }),
   });
 
   const fmt = (n: number) =>
@@ -52,6 +74,31 @@ function HomePage() {
         />
       </div>
 
+      <div>
+        <h2 className="text-sm font-semibold text-muted-foreground mb-3">Recepción de hoy</h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <StatLink
+            to="/gestion/recepcion"
+            icon={CalendarClock}
+            label="Turnos del día"
+            value={recepcion?.turnos ?? "—"}
+          />
+          <StatLink
+            to="/gestion/recepcion"
+            icon={Clock}
+            label="Esperando (en sala)"
+            value={recepcion?.llegadasPendientes ?? "—"}
+            accent
+          />
+          <StatLink
+            to="/gestion/recepcion"
+            icon={UserCheck}
+            label="Atendidos hoy"
+            value={recepcion?.llegadasAtendidas ?? "—"}
+          />
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <QuickLink
           to="/gestion/prestaciones/nueva"
@@ -65,12 +112,12 @@ function HomePage() {
           title="Ver prestaciones"
           desc="Filtrar y editar."
         />
-        {isAdmin && (
+        {puedeConfigurar && (
           <QuickLink
             to="/gestion/admin"
             icon={Settings}
-            title="Administración"
-            desc="Catálogos del sistema."
+            title="Configuración"
+            desc="Catálogos y ajustes."
           />
         )}
       </div>
@@ -89,6 +136,40 @@ function StatCard({ icon: Icon, label, value }: { icon: any; label: string; valu
         <div className="text-2xl font-bold">{value}</div>
       </CardContent>
     </Card>
+  );
+}
+
+function StatLink({
+  to,
+  icon: Icon,
+  label,
+  value,
+  accent,
+}: {
+  to: string;
+  icon: any;
+  label: string;
+  value: any;
+  accent?: boolean;
+}) {
+  return (
+    <Link to={to} className="block">
+      <Card
+        className={`hover:shadow-md transition-shadow h-full ${accent ? "border-primary/30 bg-primary/5" : ""}`}
+      >
+        <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+          <CardTitle
+            className={`text-sm font-medium ${accent ? "text-primary" : "text-muted-foreground"}`}
+          >
+            {label}
+          </CardTitle>
+          <Icon className={`h-4 w-4 ${accent ? "text-primary" : "text-muted-foreground"}`} />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{value}</div>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
 

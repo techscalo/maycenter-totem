@@ -1,11 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { listArrivals, updateArrivalEstado, archiveOldArrivals } from "@/lib/gestion/data.server";
+import { useSucursalActiva } from "@/lib/gestion/sucursal-activa";
 import { Button } from "@/components/ui/button";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Archive, RefreshCw, AlertTriangle, Sparkles, Calendar, Clock } from "lucide-react";
+import {
+  Archive,
+  RefreshCw,
+  AlertTriangle,
+  Sparkles,
+  Calendar,
+  Clock,
+  FilePlus,
+} from "lucide-react";
 
 type Arrival = {
   id: string;
@@ -17,6 +31,8 @@ type Arrival = {
   nombre_apellido: string | null;
   dni: string;
   estado: string;
+  piso_id: string | null;
+  piso_nombre: string | null;
 };
 
 const ESTADOS = ["Pendiente", "Atendido", "Cancelado"] as const;
@@ -49,15 +65,18 @@ function getRange(rango: Rango, desde: string, hasta: string): { from?: Date; to
   const now = new Date();
   if (rango === "hoy") return { from: startOfDay(now), to: endOfDay(now) };
   if (rango === "ayer") {
-    const y = new Date(now); y.setDate(y.getDate() - 1);
+    const y = new Date(now);
+    y.setDate(y.getDate() - 1);
     return { from: startOfDay(y), to: endOfDay(y) };
   }
   if (rango === "7d") {
-    const f = new Date(now); f.setDate(f.getDate() - 6);
+    const f = new Date(now);
+    f.setDate(f.getDate() - 6);
     return { from: startOfDay(f), to: endOfDay(now) };
   }
   if (rango === "30d") {
-    const f = new Date(now); f.setDate(f.getDate() - 29);
+    const f = new Date(now);
+    f.setDate(f.getDate() - 29);
     return { from: startOfDay(f), to: endOfDay(now) };
   }
   if (rango === "custom") {
@@ -70,38 +89,55 @@ function getRange(rango: Rango, desde: string, hasta: string): { from?: Date; to
 }
 
 export function RecepcionPanel() {
+  const { sucursalId } = useSucursalActiva();
   const [items, setItems] = useState<Arrival[]>([]);
   const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [pisoFiltro, setPisoFiltro] = useState<string>("todos");
   const [ocultarAtendidos, setOcultarAtendidos] = useState(true);
   const [loading, setLoading] = useState(true);
   const [rango, setRango] = useState<Rango>("hoy");
   const [desde, setDesde] = useState<string>(toDateInput(new Date()));
   const [hasta, setHasta] = useState<string>(toDateInput(new Date()));
 
-  const load = async () => {
-    setLoading(true);
+  // silent=true (polling/refresco): no muestra "Cargando…" ni re-renderiza si nada cambió.
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     const { from, to } = getRange(rango, desde, hasta);
-    const data = await listArrivals({
+    const data = (await listArrivals({
       data: {
         ...(from ? { from: from.toISOString() } : {}),
         ...(to ? { to: to.toISOString() } : {}),
+        ...(sucursalId ? { sucursalId } : {}),
         limit: 500,
       },
+    })) as Arrival[];
+    setItems((prev) => {
+      const sig = (arr: Arrival[]) => arr.map((a) => `${a.id}:${a.estado}`).join("|");
+      return sig(prev) === sig(data ?? []) ? prev : (data ?? []);
     });
-    setItems((data as Arrival[]) ?? []);
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
   useEffect(() => {
     load();
-    // Neon no tiene realtime: refrescamos por polling cada 10s
-    const t = setInterval(load, 10000);
+    // Neon no tiene realtime: refrescamos por polling cada 10s (silencioso, sin parpadeo)
+    const t = setInterval(() => load(true), 10000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rango, desde, hasta]);
+  }, [rango, desde, hasta, sucursalId]);
+
+  // Pisos presentes en las llegadas del período (para ofrecer el filtro).
+  const pisos = useMemo(() => {
+    const map = new Map<string, string>();
+    items.forEach((a) => {
+      if (a.piso_id && a.piso_nombre) map.set(a.piso_id, a.piso_nombre);
+    });
+    return Array.from(map.entries()).map(([id, nombre]) => ({ id, nombre }));
+  }, [items]);
 
   const filtered = useMemo(() => {
     return items.filter((a) => {
+      if (pisoFiltro !== "todos" && a.piso_id !== pisoFiltro) return false;
       if (filtro === "turno") return a.tipo_llegada === "TURNO PROGRAMADO";
       if (filtro === "urgencia") return a.tipo_llegada === "URGENCIA / SIN TURNO";
       if (filtro === "pendientes") return a.estado === "Pendiente";
@@ -109,17 +145,24 @@ export function RecepcionPanel() {
       if (filtro === "todos" && ocultarAtendidos) return a.estado !== "Atendido";
       return true;
     });
-  }, [items, filtro, ocultarAtendidos]);
+  }, [items, filtro, pisoFiltro, ocultarAtendidos]);
 
-  const counts = useMemo(() => ({
-    total: items.length,
-    pendientes: items.filter((i) => i.estado === "Pendiente").length,
-    urgencias: items.filter((i) => i.tipo_llegada === "URGENCIA / SIN TURNO" && i.estado === "Pendiente").length,
-  }), [items]);
+  const counts = useMemo(
+    () => ({
+      total: items.length,
+      pendientes: items.filter((i) => i.estado === "Pendiente").length,
+      urgencias: items.filter(
+        (i) => i.tipo_llegada === "URGENCIA / SIN TURNO" && i.estado === "Pendiente",
+      ).length,
+    }),
+    [items],
+  );
 
   const updateEstado = async (id: string, estado: string) => {
+    // Optimista: reflejamos el cambio en el acto y refrescamos en silencio.
+    setItems((prev) => prev.map((a) => (a.id === id ? { ...a, estado } : a)));
     await updateArrivalEstado({ data: { id, estado } });
-    load();
+    load(true);
   };
 
   const archiveOld = async () => {
@@ -130,7 +173,7 @@ export function RecepcionPanel() {
 
   const actions = (
     <div className="flex items-center gap-2">
-      <Button variant="outline" onClick={load}>
+      <Button variant="outline" onClick={() => load()}>
         <RefreshCw className="mr-2 h-4 w-4" /> Actualizar
       </Button>
       <Button variant="outline" onClick={archiveOld}>
@@ -155,14 +198,16 @@ export function RecepcionPanel() {
           <span className="text-sm font-medium text-muted-foreground mr-2 inline-flex items-center gap-2">
             <Calendar className="h-4 w-4" /> Período
           </span>
-          {([
-            ["hoy", "Hoy"],
-            ["ayer", "Ayer"],
-            ["7d", "Últimos 7 días"],
-            ["30d", "Últimos 30 días"],
-            ["todos", "Históricos"],
-            ["custom", "Personalizado"],
-          ] as [Rango, string][]).map(([key, label]) => (
+          {(
+            [
+              ["hoy", "Hoy"],
+              ["ayer", "Ayer"],
+              ["7d", "Últimos 7 días"],
+              ["30d", "Últimos 30 días"],
+              ["todos", "Históricos"],
+              ["custom", "Personalizado"],
+            ] as [Rango, string][]
+          ).map(([key, label]) => (
             <button
               key={key}
               onClick={() => setRango(key)}
@@ -203,7 +248,12 @@ export function RecepcionPanel() {
             value={counts.total}
             icon={<Calendar className="h-5 w-5" />}
           />
-          <StatCard label="Pendientes" value={counts.pendientes} icon={<Clock className="h-5 w-5" />} accent />
+          <StatCard
+            label="Pendientes"
+            value={counts.pendientes}
+            icon={<Clock className="h-5 w-5" />}
+            accent
+          />
           <StatCard
             label="Urgencias pendientes"
             value={counts.urgencias}
@@ -212,15 +262,37 @@ export function RecepcionPanel() {
           />
         </div>
 
+        {/* Filtro por piso (solo si hay llegadas con piso) */}
+        {pisos.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <span className="text-sm font-medium text-muted-foreground mr-1">Piso</span>
+            {[{ id: "todos", nombre: "Todos" }, ...pisos].map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setPisoFiltro(p.id)}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                  pisoFiltro === p.id
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card text-foreground border-border hover:bg-accent"
+                }`}
+              >
+                {p.nombre}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Filters */}
         <div className="flex flex-wrap gap-2 mb-4">
-          {([
-            ["todos", "Todos"],
-            ["turno", "Turno programado"],
-            ["urgencia", "Urgencia / sin turno"],
-            ["pendientes", "Pendientes"],
-            ["atendidos", "Atendidos"],
-          ] as [Filtro, string][]).map(([key, label]) => (
+          {(
+            [
+              ["todos", "Todos"],
+              ["turno", "Turno programado"],
+              ["urgencia", "Urgencia / sin turno"],
+              ["pendientes", "Pendientes"],
+              ["atendidos", "Atendidos"],
+            ] as [Filtro, string][]
+          ).map(([key, label]) => (
             <button
               key={key}
               onClick={() => setFiltro(key)}
@@ -266,19 +338,33 @@ export function RecepcionPanel() {
 }
 
 function StatCard({
-  label, value, icon, accent, danger,
-}: { label: string; value: number; icon: React.ReactNode; accent?: boolean; danger?: boolean }) {
+  label,
+  value,
+  icon,
+  accent,
+  danger,
+}: {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  accent?: boolean;
+  danger?: boolean;
+}) {
   return (
     <div
       className={`rounded-2xl p-5 border ${
-        danger ? "border-destructive/30 bg-destructive/5"
-          : accent ? "border-primary/30 bg-primary/5"
-          : "border-border bg-card"
+        danger
+          ? "border-destructive/30 bg-destructive/5"
+          : accent
+            ? "border-primary/30 bg-primary/5"
+            : "border-border bg-card"
       }`}
     >
-      <div className={`flex items-center gap-2 text-sm ${
-        danger ? "text-destructive" : accent ? "text-primary" : "text-muted-foreground"
-      }`}>
+      <div
+        className={`flex items-center gap-2 text-sm ${
+          danger ? "text-destructive" : accent ? "text-primary" : "text-muted-foreground"
+        }`}
+      >
         {icon} {label}
       </div>
       <div className="mt-2 text-3xl font-bold">{value}</div>
@@ -290,12 +376,15 @@ function ArrivalCard({ a, onChange }: { a: Arrival; onChange: (estado: string) =
   const isUrg = a.tipo_llegada === "URGENCIA / SIN TURNO";
   const isFirst = a.tipo_paciente === "Primera atención";
   const time = new Date(a.created_at).toLocaleTimeString("es-AR", {
-    hour: "2-digit", minute: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
   });
   const estadoColor =
-    a.estado === "Atendido" ? "bg-success/15 text-success border-success/30"
-    : a.estado === "Cancelado" ? "bg-muted text-muted-foreground border-border"
-    : "bg-warning/15 text-warning-foreground border-warning/40";
+    a.estado === "Atendido"
+      ? "bg-success/15 text-success border-success/30"
+      : a.estado === "Cancelado"
+        ? "bg-muted text-muted-foreground border-border"
+        : "bg-warning/15 text-warning-foreground border-warning/40";
 
   return (
     <div
@@ -311,7 +400,9 @@ function ArrivalCard({ a, onChange }: { a: Arrival; onChange: (estado: string) =
             <AlertTriangle className="h-3 w-3 mr-1" /> Urgencia
           </Badge>
         ) : (
-          <Badge variant="secondary" className="mt-1">Turno programado</Badge>
+          <Badge variant="secondary" className="mt-1">
+            Turno programado
+          </Badge>
         )}
       </div>
 
@@ -333,10 +424,15 @@ function ArrivalCard({ a, onChange }: { a: Arrival; onChange: (estado: string) =
         {a.tipo_atencion === "Obra social" && (
           <div className="text-sm text-muted-foreground">{a.cobertura ?? "—"}</div>
         )}
+        {a.piso_nombre && (
+          <div className="text-xs text-muted-foreground mt-1">📍 {a.piso_nombre}</div>
+        )}
       </div>
 
       <div className="col-span-6 md:col-span-3 flex flex-col items-stretch gap-2">
-        <span className={`px-3 py-1 rounded-full text-xs font-semibold border self-start ${estadoColor}`}>
+        <span
+          className={`px-3 py-1 rounded-full text-xs font-semibold border self-start ${estadoColor}`}
+        >
           {a.estado}
         </span>
         <Select value={a.estado} onValueChange={onChange}>
@@ -344,9 +440,23 @@ function ArrivalCard({ a, onChange }: { a: Arrival; onChange: (estado: string) =
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {ESTADOS.map((e) => <SelectItem key={e} value={e}>{e}</SelectItem>)}
+            {ESTADOS.map((e) => (
+              <SelectItem key={e} value={e}>
+                {e}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
+        {a.estado === "Atendido" && (
+          <Button asChild size="sm" className="h-9">
+            <Link
+              to="/gestion/prestaciones/nueva"
+              search={{ dni: a.dni, nombre: a.nombre_apellido ?? undefined }}
+            >
+              <FilePlus className="h-4 w-4 mr-1" /> Cargar prestación
+            </Link>
+          </Button>
+        )}
       </div>
     </div>
   );

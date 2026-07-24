@@ -12,6 +12,7 @@ import {
   DollarSign,
   HelpCircle,
   ClipboardList,
+  Users,
   PanelLeftClose,
   PanelLeftOpen,
   Building2,
@@ -33,17 +34,27 @@ import {
 } from "@/components/ui/select";
 import logo from "@/assets/maycenter-logo.png";
 
-const NAV = [
+type NavItem = {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  exact?: boolean;
+  adminOnly?: boolean;
+  configOnly?: boolean;
+};
+
+const NAV: NavItem[] = [
   { to: "/gestion", label: "Inicio", icon: LayoutDashboard, exact: true },
   { to: "/gestion/dashboard", label: "Dashboard", icon: BarChart3 },
   { to: "/gestion/recepcion", label: "Recepción", icon: ClipboardList },
   { to: "/gestion/prestaciones/nueva", label: "Nueva prestación", icon: ListPlus },
   { to: "/gestion/prestaciones", label: "Prestaciones", icon: Table2 },
+  { to: "/gestion/pacientes", label: "Pacientes", icon: Users },
   { to: "/gestion/odontologos", label: "Odontólogos", icon: Stethoscope },
   { to: "/gestion/precios", label: "Precios", icon: DollarSign },
   { to: "/gestion/reportes/diario", label: "Reporte diario", icon: FileText },
   { to: "/gestion/reportes/ioma", label: "Reporte IOMA", icon: FileText },
-  { to: "/gestion/admin", label: "Administración", icon: Settings, adminOnly: true },
+  { to: "/gestion/admin", label: "Configuración", icon: Settings, configOnly: true },
   { to: "/gestion/ayuda", label: "Ayuda", icon: HelpCircle },
 ];
 
@@ -51,6 +62,8 @@ export function GestionShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { profile, roles, isAdmin } = useUserContext();
+  const puedeConfigurar =
+    isAdmin || roles.includes("direccion") || roles.includes("administrativo");
   const { sucursales, sucursalId, sucursalNombre, puedeCambiar, setSucursalId } =
     useSucursalActiva();
   const { theme, toggle } = useTheme();
@@ -162,26 +175,30 @@ export function GestionShell({ children }: { children: ReactNode }) {
             {!collapsed && "Colapsar menú"}
           </button>
 
-          {NAV.filter((n) => !n.adminOnly || isAdmin).map((item) => {
-            const Icon = item.icon;
-            const active = item.exact ? path === item.to : path.startsWith(item.to);
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                data-tour={item.to.split("/").pop()}
-                title={collapsed ? item.label : undefined}
-                className={cn(
-                  "flex items-center gap-3 rounded-md py-2 text-sm transition-colors",
-                  collapsed ? "justify-center px-0" : "px-3",
-                  active ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-accent",
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {!collapsed && item.label}
-              </Link>
-            );
-          })}
+          {NAV.filter((n) => (!n.adminOnly || isAdmin) && (!n.configOnly || puedeConfigurar)).map(
+            (item) => {
+              const Icon = item.icon;
+              const active = item.exact ? path === item.to : path.startsWith(item.to);
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  data-tour={item.to.split("/").pop()}
+                  title={collapsed ? item.label : undefined}
+                  className={cn(
+                    "flex items-center gap-3 rounded-md py-2 text-sm transition-colors",
+                    collapsed ? "justify-center px-0" : "px-3",
+                    active
+                      ? "bg-primary text-primary-foreground"
+                      : "text-foreground hover:bg-accent",
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {!collapsed && item.label}
+                </Link>
+              );
+            },
+          )}
         </nav>
 
         <div className="px-3 py-3 border-t space-y-2">
