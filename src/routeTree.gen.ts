@@ -21,9 +21,11 @@ import { Route as AppGestionDashboardRouteImport } from './routes/_app.gestion.d
 import { Route as AppGestionAyudaRouteImport } from './routes/_app.gestion.ayuda'
 import { Route as AppGestionAdminRouteImport } from './routes/_app.gestion.admin'
 import { Route as AppGestionPrestacionesIndexRouteImport } from './routes/_app.gestion.prestaciones.index'
+import { Route as AppGestionPacientesIndexRouteImport } from './routes/_app.gestion.pacientes.index'
 import { Route as AppGestionReportesIomaRouteImport } from './routes/_app.gestion.reportes.ioma'
 import { Route as AppGestionReportesDiarioRouteImport } from './routes/_app.gestion.reportes.diario'
 import { Route as AppGestionPrestacionesNuevaRouteImport } from './routes/_app.gestion.prestaciones.nueva'
+import { Route as AppGestionPacientesDniRouteImport } from './routes/_app.gestion.pacientes.$dni'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -85,6 +87,12 @@ const AppGestionPrestacionesIndexRoute =
     path: '/gestion/prestaciones/',
     getParentRoute: () => AppRoute,
   } as any)
+const AppGestionPacientesIndexRoute =
+  AppGestionPacientesIndexRouteImport.update({
+    id: '/gestion/pacientes/',
+    path: '/gestion/pacientes/',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppGestionReportesIomaRoute = AppGestionReportesIomaRouteImport.update({
   id: '/gestion/reportes/ioma',
   path: '/gestion/reportes/ioma',
@@ -102,6 +110,11 @@ const AppGestionPrestacionesNuevaRoute =
     path: '/gestion/prestaciones/nueva',
     getParentRoute: () => AppRoute,
   } as any)
+const AppGestionPacientesDniRoute = AppGestionPacientesDniRouteImport.update({
+  id: '/gestion/pacientes/$dni',
+  path: '/gestion/pacientes/$dni',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -114,9 +127,11 @@ export interface FileRoutesByFullPath {
   '/gestion/recepcion': typeof AppGestionRecepcionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/gestion/': typeof AppGestionIndexRoute
+  '/gestion/pacientes/$dni': typeof AppGestionPacientesDniRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/gestion/reportes/diario': typeof AppGestionReportesDiarioRoute
   '/gestion/reportes/ioma': typeof AppGestionReportesIomaRoute
+  '/gestion/pacientes/': typeof AppGestionPacientesIndexRoute
   '/gestion/prestaciones/': typeof AppGestionPrestacionesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -130,9 +145,11 @@ export interface FileRoutesByTo {
   '/gestion/recepcion': typeof AppGestionRecepcionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/gestion': typeof AppGestionIndexRoute
+  '/gestion/pacientes/$dni': typeof AppGestionPacientesDniRoute
   '/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/gestion/reportes/diario': typeof AppGestionReportesDiarioRoute
   '/gestion/reportes/ioma': typeof AppGestionReportesIomaRoute
+  '/gestion/pacientes': typeof AppGestionPacientesIndexRoute
   '/gestion/prestaciones': typeof AppGestionPrestacionesIndexRoute
 }
 export interface FileRoutesById {
@@ -148,9 +165,11 @@ export interface FileRoutesById {
   '/_app/gestion/recepcion': typeof AppGestionRecepcionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_app/gestion/': typeof AppGestionIndexRoute
+  '/_app/gestion/pacientes/$dni': typeof AppGestionPacientesDniRoute
   '/_app/gestion/prestaciones/nueva': typeof AppGestionPrestacionesNuevaRoute
   '/_app/gestion/reportes/diario': typeof AppGestionReportesDiarioRoute
   '/_app/gestion/reportes/ioma': typeof AppGestionReportesIomaRoute
+  '/_app/gestion/pacientes/': typeof AppGestionPacientesIndexRoute
   '/_app/gestion/prestaciones/': typeof AppGestionPrestacionesIndexRoute
 }
 export interface FileRouteTypes {
@@ -166,9 +185,11 @@ export interface FileRouteTypes {
     | '/gestion/recepcion'
     | '/api/auth/$'
     | '/gestion/'
+    | '/gestion/pacientes/$dni'
     | '/gestion/prestaciones/nueva'
     | '/gestion/reportes/diario'
     | '/gestion/reportes/ioma'
+    | '/gestion/pacientes/'
     | '/gestion/prestaciones/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -182,9 +203,11 @@ export interface FileRouteTypes {
     | '/gestion/recepcion'
     | '/api/auth/$'
     | '/gestion'
+    | '/gestion/pacientes/$dni'
     | '/gestion/prestaciones/nueva'
     | '/gestion/reportes/diario'
     | '/gestion/reportes/ioma'
+    | '/gestion/pacientes'
     | '/gestion/prestaciones'
   id:
     | '__root__'
@@ -199,9 +222,11 @@ export interface FileRouteTypes {
     | '/_app/gestion/recepcion'
     | '/api/auth/$'
     | '/_app/gestion/'
+    | '/_app/gestion/pacientes/$dni'
     | '/_app/gestion/prestaciones/nueva'
     | '/_app/gestion/reportes/diario'
     | '/_app/gestion/reportes/ioma'
+    | '/_app/gestion/pacientes/'
     | '/_app/gestion/prestaciones/'
   fileRoutesById: FileRoutesById
 }
@@ -298,6 +323,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGestionPrestacionesIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/gestion/pacientes/': {
+      id: '/_app/gestion/pacientes/'
+      path: '/gestion/pacientes'
+      fullPath: '/gestion/pacientes/'
+      preLoaderRoute: typeof AppGestionPacientesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/gestion/reportes/ioma': {
       id: '/_app/gestion/reportes/ioma'
       path: '/gestion/reportes/ioma'
@@ -319,6 +351,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGestionPrestacionesNuevaRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/gestion/pacientes/$dni': {
+      id: '/_app/gestion/pacientes/$dni'
+      path: '/gestion/pacientes/$dni'
+      fullPath: '/gestion/pacientes/$dni'
+      preLoaderRoute: typeof AppGestionPacientesDniRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -330,9 +369,11 @@ interface AppRouteChildren {
   AppGestionPreciosRoute: typeof AppGestionPreciosRoute
   AppGestionRecepcionRoute: typeof AppGestionRecepcionRoute
   AppGestionIndexRoute: typeof AppGestionIndexRoute
+  AppGestionPacientesDniRoute: typeof AppGestionPacientesDniRoute
   AppGestionPrestacionesNuevaRoute: typeof AppGestionPrestacionesNuevaRoute
   AppGestionReportesDiarioRoute: typeof AppGestionReportesDiarioRoute
   AppGestionReportesIomaRoute: typeof AppGestionReportesIomaRoute
+  AppGestionPacientesIndexRoute: typeof AppGestionPacientesIndexRoute
   AppGestionPrestacionesIndexRoute: typeof AppGestionPrestacionesIndexRoute
 }
 
@@ -344,9 +385,11 @@ const AppRouteChildren: AppRouteChildren = {
   AppGestionPreciosRoute: AppGestionPreciosRoute,
   AppGestionRecepcionRoute: AppGestionRecepcionRoute,
   AppGestionIndexRoute: AppGestionIndexRoute,
+  AppGestionPacientesDniRoute: AppGestionPacientesDniRoute,
   AppGestionPrestacionesNuevaRoute: AppGestionPrestacionesNuevaRoute,
   AppGestionReportesDiarioRoute: AppGestionReportesDiarioRoute,
   AppGestionReportesIomaRoute: AppGestionReportesIomaRoute,
+  AppGestionPacientesIndexRoute: AppGestionPacientesIndexRoute,
   AppGestionPrestacionesIndexRoute: AppGestionPrestacionesIndexRoute,
 }
 

@@ -5,10 +5,28 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createArrival } from "@/lib/gestion/data.server";
-import { CheckCircle2, CalendarCheck2, Siren, UserRound, Sparkles, CreditCard, Wallet, HelpCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  CalendarCheck2,
+  Siren,
+  UserRound,
+  Sparkles,
+  CreditCard,
+  Wallet,
+  HelpCircle,
+} from "lucide-react";
 import logo from "@/assets/maycenter-logo.png";
 
 export const Route = createFileRoute("/")({
+  // Cada tablet abre /?clinica=<slug>&piso=<nombre> (ej: /?clinica=caba&piso=3).
+  // Dejamos el valor crudo (número o texto) para no ensuciar la URL con comillas;
+  // se normaliza a string al enviarlo.
+  validateSearch: (
+    s: Record<string, unknown>,
+  ): { clinica?: string | number; piso?: string | number } => ({
+    clinica: s.clinica != null && s.clinica !== "" ? (s.clinica as string | number) : undefined,
+    piso: s.piso != null && s.piso !== "" ? (s.piso as string | number) : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Maycenter — Anunciá tu llegada" },
@@ -18,14 +36,31 @@ export const Route = createFileRoute("/")({
   component: KioskPage,
 });
 
-type Step = "idle" | "tipo_llegada" | "tipo_paciente" | "tipo_atencion" | "cobertura" | "datos" | "ok";
+type Step =
+  | "idle"
+  | "tipo_llegada"
+  | "tipo_paciente"
+  | "tipo_atencion"
+  | "cobertura"
+  | "datos"
+  | "ok";
 
 const COBERTURAS = [
-  "OSDE", "OMINT", "Medifé", "Galeno", "IOMA", "DX Medical",
-  "AMEBPBA", "OSPJN", "Swiss Medical", "OSPE", "Biomed",
+  "OSDE",
+  "OMINT",
+  "Medifé",
+  "Galeno",
+  "IOMA",
+  "DX Medical",
+  "AMEBPBA",
+  "OSPJN",
+  "Swiss Medical",
+  "OSPE",
+  "Biomed",
 ];
 
 function KioskPage() {
+  const { clinica, piso } = Route.useSearch();
   const [step, setStep] = useState<Step>("idle");
   const [tipoLlegada, setTipoLlegada] = useState<string>("");
   const [tipoPaciente, setTipoPaciente] = useState<string>("");
@@ -38,8 +73,13 @@ function KioskPage() {
 
   const reset = () => {
     setStep("idle");
-    setTipoLlegada(""); setTipoPaciente(""); setTipoAtencion("");
-    setCobertura(""); setNombre(""); setDni(""); setErrors({});
+    setTipoLlegada("");
+    setTipoPaciente("");
+    setTipoAtencion("");
+    setCobertura("");
+    setNombre("");
+    setDni("");
+    setErrors({});
   };
 
   // Auto-return from confirmation after 8s
@@ -51,7 +91,15 @@ function KioskPage() {
   }, [step]);
 
   const stepIndex = (
-    { idle: 0, tipo_llegada: 1, tipo_paciente: 2, tipo_atencion: 3, cobertura: 4, datos: 5, ok: 6 } as Record<Step, number>
+    {
+      idle: 0,
+      tipo_llegada: 1,
+      tipo_paciente: 2,
+      tipo_atencion: 3,
+      cobertura: 4,
+      datos: 5,
+      ok: 6,
+    } as Record<Step, number>
   )[step];
 
   // ---------- IDLE / WAITING ----------
@@ -97,7 +145,8 @@ function KioskPage() {
   if (step === "tipo_llegada") {
     return (
       <KioskShell
-        step={stepIndex} totalSteps={5}
+        step={stepIndex}
+        totalSteps={5}
         title="Bienvenido/a a la clínica"
         subtitle="Seleccioná una opción para anunciar tu llegada"
         onCancel={reset}
@@ -106,13 +155,19 @@ function KioskPage() {
           <BigOptionButton
             icon={<CalendarCheck2 className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />}
             label="Tengo turno"
-            onClick={() => { setTipoLlegada("TURNO PROGRAMADO"); setStep("tipo_paciente"); }}
+            onClick={() => {
+              setTipoLlegada("TURNO PROGRAMADO");
+              setStep("tipo_paciente");
+            }}
           />
           <BigOptionButton
             icon={<Siren className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />}
             label="No tengo turno / Urgencia"
             variant="danger"
-            onClick={() => { setTipoLlegada("URGENCIA / SIN TURNO"); setStep("tipo_paciente"); }}
+            onClick={() => {
+              setTipoLlegada("URGENCIA / SIN TURNO");
+              setStep("tipo_paciente");
+            }}
           />
         </div>
       </KioskShell>
@@ -123,19 +178,28 @@ function KioskPage() {
   if (step === "tipo_paciente") {
     return (
       <KioskShell
-        step={stepIndex} totalSteps={5}
+        step={stepIndex}
+        totalSteps={5}
         title="¿Ya sos paciente de la clínica?"
         onBack={() => setStep("tipo_llegada")}
         onCancel={reset}
       >
         <div className="grid gap-5">
           <BigOptionButton
-            icon={<UserRound className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />} label="Ya soy paciente"
-            onClick={() => { setTipoPaciente("Paciente existente"); setStep("tipo_atencion"); }}
+            icon={<UserRound className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />}
+            label="Ya soy paciente"
+            onClick={() => {
+              setTipoPaciente("Paciente existente");
+              setStep("tipo_atencion");
+            }}
           />
           <BigOptionButton
-            icon={<Sparkles className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />} label="Es mi primera atención"
-            onClick={() => { setTipoPaciente("Primera atención"); setStep("tipo_atencion"); }}
+            icon={<Sparkles className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />}
+            label="Es mi primera atención"
+            onClick={() => {
+              setTipoPaciente("Primera atención");
+              setStep("tipo_atencion");
+            }}
           />
         </div>
       </KioskShell>
@@ -146,19 +210,29 @@ function KioskPage() {
   if (step === "tipo_atencion") {
     return (
       <KioskShell
-        step={stepIndex} totalSteps={5}
+        step={stepIndex}
+        totalSteps={5}
         title="¿Cómo es tu atención?"
         onBack={() => setStep("tipo_paciente")}
         onCancel={reset}
       >
         <div className="grid gap-5">
           <BigOptionButton
-            icon={<CreditCard className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />} label="Obra social"
-            onClick={() => { setTipoAtencion("Obra social"); setStep("cobertura"); }}
+            icon={<CreditCard className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />}
+            label="Obra social"
+            onClick={() => {
+              setTipoAtencion("Obra social");
+              setStep("cobertura");
+            }}
           />
           <BigOptionButton
-            icon={<Wallet className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />} label="Particular"
-            onClick={() => { setTipoAtencion("Particular"); setCobertura(""); setStep("datos"); }}
+            icon={<Wallet className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />}
+            label="Particular"
+            onClick={() => {
+              setTipoAtencion("Particular");
+              setCobertura("");
+              setStep("datos");
+            }}
           />
         </div>
       </KioskShell>
@@ -169,7 +243,8 @@ function KioskPage() {
   if (step === "cobertura") {
     return (
       <KioskShell
-        step={stepIndex} totalSteps={5}
+        step={stepIndex}
+        totalSteps={5}
         title="Seleccioná tu cobertura"
         onBack={() => setStep("tipo_atencion")}
         onCancel={reset}
@@ -178,7 +253,10 @@ function KioskPage() {
           {COBERTURAS.map((c) => (
             <button
               key={c}
-              onClick={() => { setCobertura(c); setStep("datos"); }}
+              onClick={() => {
+                setCobertura(c);
+                setStep("datos");
+              }}
               className="rounded-2xl border-2 border-border bg-card p-6 text-xl font-semibold text-foreground hover:border-primary hover:-translate-y-0.5 active:scale-95 transition-all"
               style={{ boxShadow: "var(--shadow-card)" }}
             >
@@ -186,7 +264,10 @@ function KioskPage() {
             </button>
           ))}
           <button
-            onClick={() => { setCobertura("Otra obra social"); setStep("datos"); }}
+            onClick={() => {
+              setCobertura("Otra obra social");
+              setStep("datos");
+            }}
             className="rounded-2xl border-2 border-dashed border-primary/40 bg-primary/5 p-6 text-xl font-semibold text-primary hover:bg-primary/10 active:scale-95 transition-all col-span-2 md:col-span-3 inline-flex items-center justify-center gap-3"
           >
             <HelpCircle className="h-6 w-6" /> Otra obra social
@@ -217,6 +298,8 @@ function KioskPage() {
             cobertura: tipoAtencion === "Obra social" ? cobertura : "Particular",
             nombreApellido: nombre.trim(),
             dni: dniClean,
+            clinica: clinica != null ? String(clinica) : undefined,
+            piso: piso != null ? String(piso) : undefined,
           },
         });
         setSaving(false);
@@ -229,7 +312,8 @@ function KioskPage() {
 
     return (
       <KioskShell
-        step={stepIndex} totalSteps={5}
+        step={stepIndex}
+        totalSteps={5}
         title="Completá tus datos"
         subtitle="Necesitamos esta información para registrar tu llegada."
         onBack={() => setStep(tipoAtencion === "Obra social" ? "cobertura" : "tipo_atencion")}
@@ -240,7 +324,9 @@ function KioskPage() {
           style={{ boxShadow: "var(--shadow-card)" }}
         >
           <div className="space-y-2">
-            <Label htmlFor="nombre" className="text-lg">Nombre y apellido</Label>
+            <Label htmlFor="nombre" className="text-lg">
+              Nombre y apellido
+            </Label>
             <Input
               id="nombre"
               value={nombre}
@@ -252,7 +338,9 @@ function KioskPage() {
             {errors.nombre && <p className="text-destructive text-sm">{errors.nombre}</p>}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="dni" className="text-lg">DNI</Label>
+            <Label htmlFor="dni" className="text-lg">
+              DNI
+            </Label>
             <Input
               id="dni"
               value={dni}
@@ -288,8 +376,10 @@ function KioskPage() {
         className="rounded-3xl bg-card p-10 md:p-16 text-center border border-border animate-in zoom-in-95 fade-in duration-500"
         style={{ boxShadow: "var(--shadow-soft)" }}
       >
-        <div className="mx-auto h-24 w-24 md:h-28 md:w-28 rounded-full grid place-items-center"
-             style={{ background: "var(--gradient-brand)" }}>
+        <div
+          className="mx-auto h-24 w-24 md:h-28 md:w-28 rounded-full grid place-items-center"
+          style={{ background: "var(--gradient-brand)" }}
+        >
           <CheckCircle2 className="h-14 w-14 md:h-16 md:w-16 text-white" />
         </div>
         <h2 className="mt-8 text-3xl md:text-5xl font-bold text-foreground">

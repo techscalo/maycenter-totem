@@ -31,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { montoLinea, montoUsdLinea } from "@/lib/gestion/reportes";
 
 export const Route = createFileRoute("/_app/gestion/prestaciones/")({
   component: PrestacionesList,
@@ -114,8 +115,8 @@ function PrestacionesList() {
   const totals = useMemo(() => {
     return {
       count: filtered.length,
-      ars: filtered.reduce((s, r) => s + Number(r.monto || 0), 0),
-      usd: filtered.reduce((s, r) => s + Number(r.monto_usd || 0), 0),
+      ars: filtered.reduce((s, r) => s + montoLinea(r), 0),
+      usd: filtered.reduce((s, r) => s + montoUsdLinea(r), 0),
     };
   }, [filtered]);
 

@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   sucursales,
@@ -12,6 +12,7 @@ import {
   atenciones,
   atencionItems,
   arrivals,
+  pacientes,
 } from "@/db/schema";
 import { requireAuth, requireAdmin, type AuthCtx } from "@/lib/gestion/session.server";
 
@@ -113,9 +114,7 @@ export const listNomencladores = createServerFn({ method: "GET" })
     return db
       .select()
       .from(nomencladores)
-      .where(
-        and(eq(nomencladores.obraSocialId, data.obraSocialId), eq(nomencladores.activo, true)),
-      )
+      .where(and(eq(nomencladores.obraSocialId, data.obraSocialId), eq(nomencladores.activo, true)))
       .orderBy(asc(nomencladores.plan), asc(nomencladores.codigo));
   });
 
@@ -209,7 +208,10 @@ export const listPrestaciones = createServerFn({ method: "GET" })
       .leftJoin(pisos, eq(atenciones.pisoId, pisos.id))
       .leftJoin(odontologos, eq(atenciones.odontologoId, odontologos.id))
       .leftJoin(nomencladores, eq(atencionItems.nomencladorId, nomencladores.id))
-      .leftJoin(serviciosParticulares, eq(atencionItems.servicioParticularId, serviciosParticulares.id))
+      .leftJoin(
+        serviciosParticulares,
+        eq(atencionItems.servicioParticularId, serviciosParticulares.id),
+      )
       .where(and(...conds))
       .orderBy(desc(atenciones.fecha), desc(atenciones.createdAt))
       .limit(data.limit ?? 500);
@@ -235,9 +237,7 @@ export const listPrestaciones = createServerFn({ method: "GET" })
       obras_sociales: r.obra_nombre ? { nombre: r.obra_nombre } : null,
       pisos: r.piso_nombre ? { nombre: r.piso_nombre } : null,
       odontologos: r.odo_nombre ? { nombre: r.odo_nombre, numero_od: r.odo_numero } : null,
-      nomencladores: r.nom_codigo
-        ? { codigo: r.nom_codigo, descripcion: r.nom_descripcion }
-        : null,
+      nomencladores: r.nom_codigo ? { codigo: r.nom_codigo, descripcion: r.nom_descripcion } : null,
     }));
   });
 
@@ -321,6 +321,23 @@ export const createAtencion = createServerFn({ method: "POST" })
         estadoPlaca: it.estadoPlaca ?? null,
       })),
     );
+
+    // Alimenta la ficha de paciente (upsert por DNI): crea si es nuevo, refresca nombre/OS.
+    await db
+      .insert(pacientes)
+      .values({
+        dni: data.dni.trim(),
+        nombre: data.paciente.trim(),
+        obraSocialId: data.obraSocialId,
+      })
+      .onConflictDoUpdate({
+        target: pacientes.dni,
+        set: {
+          nombre: data.paciente.trim(),
+          obraSocialId: data.obraSocialId,
+          updatedAt: new Date(),
+        },
+      });
 
     return { ok: true, atencionId: atencion.id };
   });
@@ -473,12 +490,13 @@ export const createObraSocial = createServerFn({ method: "POST" })
   });
 
 export const toggleObraSocial = createServerFn({ method: "POST" })
-  .inputValidator((i: unknown) =>
-    z.object({ id: z.string().uuid(), activa: z.boolean() }).parse(i),
-  )
+  .inputValidator((i: unknown) => z.object({ id: z.string().uuid(), activa: z.boolean() }).parse(i))
   .handler(async ({ data }) => {
     await requireAdmin();
-    await db.update(obrasSociales).set({ activa: data.activa }).where(eq(obrasSociales.id, data.id));
+    await db
+      .update(obrasSociales)
+      .set({ activa: data.activa })
+      .where(eq(obrasSociales.id, data.id));
     return { ok: true };
   });
 
@@ -625,10 +643,12 @@ export const listNomencladoresAdmin = createServerFn({ method: "GET" })
   });
 
 // Servicios particulares (catálogo USD)
-export const listServiciosParticularesAdmin = createServerFn({ method: "GET" }).handler(async () => {
-  await requireAdmin();
-  return db.select().from(serviciosParticulares).orderBy(asc(serviciosParticulares.descripcion));
-});
+export const listServiciosParticularesAdmin = createServerFn({ method: "GET" }).handler(
+  async () => {
+    await requireAdmin();
+    return db.select().from(serviciosParticulares).orderBy(asc(serviciosParticulares.descripcion));
+  },
+);
 
 export const createServicioParticular = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) =>
@@ -685,11 +705,33 @@ export const createArrival = createServerFn({ method: "POST" })
         cobertura: z.string().nullable().optional(),
         nombreApellido: z.string().min(1),
         dni: z.string().min(1),
+        // Origen del tótem: slug de clínica (?clinica=caba) y nombre de piso (?piso=3).
+        clinica: z.string().optional(),
+        piso: z.string().optional(),
       })
       .parse(i),
   )
   .handler(async ({ data }) => {
-    // Pública: la usa el tótem sin autenticación
+    // Pública: la usa el tótem sin autenticación.
+    // Resuelve clínica (por slug) y piso (por nombre dentro de esa clínica).
+    let sucursalId: string | null = null;
+    let pisoId: string | null = null;
+    if (data.clinica) {
+      const [s] = await db
+        .select({ id: sucursales.id })
+        .from(sucursales)
+        .where(eq(sucursales.slug, data.clinica.trim().toLowerCase()))
+        .limit(1);
+      sucursalId = s?.id ?? null;
+      if (sucursalId && data.piso) {
+        const [p] = await db
+          .select({ id: pisos.id })
+          .from(pisos)
+          .where(and(eq(pisos.sucursalId, sucursalId), eq(pisos.nombre, data.piso.trim())))
+          .limit(1);
+        pisoId = p?.id ?? null;
+      }
+    }
     await db.insert(arrivals).values({
       tipoLlegada: data.tipoLlegada,
       tipoPaciente: data.tipoPaciente,
@@ -697,6 +739,8 @@ export const createArrival = createServerFn({ method: "POST" })
       cobertura: data.cobertura ?? null,
       nombreApellido: data.nombreApellido.trim(),
       dni: data.dni.trim(),
+      sucursalId,
+      pisoId,
       estado: "Pendiente",
     });
     return { ok: true };
@@ -708,18 +752,44 @@ export const listArrivals = createServerFn({ method: "GET" })
       .object({
         from: z.string().optional(),
         to: z.string().optional(),
+        sucursalId: z.string().uuid().optional(),
+        pisoId: z.string().uuid().optional(),
         limit: z.number().int().positive().max(1000).optional(),
       })
       .parse(i ?? {}),
   )
   .handler(async ({ data }) => {
-    await requireAuth();
+    const ctx = await requireAuth();
     const conds = [];
     if (data.from) conds.push(gte(arrivals.createdAt, new Date(data.from)));
     if (data.to) conds.push(lte(arrivals.createdAt, new Date(data.to)));
+    // Scope por sucursal: la pedida (validada contra las asignadas) o la primera asignada.
+    const sucursalId = data.sucursalId
+      ? ctx.sucursalIds.includes(data.sucursalId)
+        ? data.sucursalId
+        : null
+      : ctx.sucursalIds[0];
+    if (sucursalId) conds.push(eq(arrivals.sucursalId, sucursalId));
+    if (data.pisoId) conds.push(eq(arrivals.pisoId, data.pisoId));
     const rows = await db
-      .select()
+      .select({
+        id: arrivals.id,
+        createdAt: arrivals.createdAt,
+        tipoLlegada: arrivals.tipoLlegada,
+        tipoPaciente: arrivals.tipoPaciente,
+        tipoAtencion: arrivals.tipoAtencion,
+        cobertura: arrivals.cobertura,
+        nombreApellido: arrivals.nombreApellido,
+        dni: arrivals.dni,
+        estado: arrivals.estado,
+        sucursalId: arrivals.sucursalId,
+        sucursalNombre: sucursales.nombre,
+        pisoId: arrivals.pisoId,
+        pisoNombre: pisos.nombre,
+      })
       .from(arrivals)
+      .leftJoin(pisos, eq(arrivals.pisoId, pisos.id))
+      .leftJoin(sucursales, eq(arrivals.sucursalId, sucursales.id))
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(desc(arrivals.createdAt))
       .limit(data.limit ?? 500);
@@ -734,6 +804,10 @@ export const listArrivals = createServerFn({ method: "GET" })
       nombre_apellido: a.nombreApellido,
       dni: a.dni,
       estado: a.estado,
+      sucursal_id: a.sucursalId,
+      sucursal_nombre: a.sucursalNombre,
+      piso_id: a.pisoId,
+      piso_nombre: a.pisoNombre,
     }));
   });
 
@@ -754,3 +828,126 @@ export const archiveOldArrivals = createServerFn({ method: "POST" }).handler(asy
   await db.delete(arrivals).where(lte(arrivals.createdAt, start));
   return { ok: true };
 });
+
+// ---------------------------------------------------------------------------
+// Pacientes (ficha + autocompletado por DNI)
+// ---------------------------------------------------------------------------
+
+// Devuelve el paciente por DNI exacto (para autocompletar en la carga). null si no existe.
+export const getPacienteByDni = createServerFn({ method: "GET" })
+  .inputValidator((i: unknown) => z.object({ dni: z.string().min(1) }).parse(i))
+  .handler(async ({ data }) => {
+    await requireAuth();
+    const [p] = await db
+      .select()
+      .from(pacientes)
+      .where(eq(pacientes.dni, data.dni.trim()))
+      .limit(1);
+    if (!p) return null;
+    return {
+      id: p.id,
+      dni: p.dni,
+      nombre: p.nombre,
+      telefono: p.telefono,
+      obra_social_id: p.obraSocialId,
+      notas: p.notas,
+    };
+  });
+
+// Listado de pacientes con búsqueda opcional por nombre o DNI.
+// Se acota a la sucursal pedida: aparecen los pacientes con al menos una atención en esa sede.
+export const listPacientes = createServerFn({ method: "GET" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        q: z.string().optional(),
+        sucursalId: z.string().uuid().optional(),
+        limit: z.number().int().positive().max(1000).optional(),
+      })
+      .parse(i ?? {}),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    const q = data.q?.trim().toLowerCase();
+    // Sede a filtrar: la pedida (validada) o la primera asignada.
+    const sucursalId = data.sucursalId
+      ? ctx.sucursalIds.includes(data.sucursalId)
+        ? data.sucursalId
+        : null
+      : ctx.sucursalIds[0];
+    if (!sucursalId) return [];
+    const rows = await db
+      .select({
+        id: pacientes.id,
+        dni: pacientes.dni,
+        nombre: pacientes.nombre,
+        telefono: pacientes.telefono,
+        obraNombre: obrasSociales.nombre,
+        updatedAt: pacientes.updatedAt,
+      })
+      .from(pacientes)
+      .leftJoin(obrasSociales, eq(pacientes.obraSocialId, obrasSociales.id))
+      .where(
+        sql`EXISTS (SELECT 1 FROM ${atenciones} a WHERE a.dni = ${pacientes.dni} AND a.sucursal_id = ${sucursalId})`,
+      )
+      .orderBy(asc(pacientes.nombre))
+      .limit(q ? 2000 : (data.limit ?? 500));
+    const filtered = q
+      ? rows.filter((r) => `${r.nombre} ${r.dni}`.toLowerCase().includes(q))
+      : rows;
+    return filtered.map((r) => ({
+      id: r.id,
+      dni: r.dni,
+      nombre: r.nombre,
+      telefono: r.telefono,
+      obra_nombre: r.obraNombre,
+      updated_at: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : String(r.updatedAt),
+    }));
+  });
+
+// Historial completo de atenciones de un paciente (todas las sedes), vista plana por línea.
+export const getPacienteHistorial = createServerFn({ method: "GET" })
+  .inputValidator((i: unknown) => z.object({ dni: z.string().min(1) }).parse(i))
+  .handler(async ({ data }) => {
+    await requireAuth();
+    const rows = await db
+      .select({
+        id: atencionItems.id,
+        atencion_id: atenciones.id,
+        fecha: atenciones.fecha,
+        paciente: atenciones.paciente,
+        primera_vez: atenciones.primeraVez,
+        cantidad: atencionItems.cantidad,
+        monto: atencionItems.monto,
+        facturable: atencionItems.facturable,
+        codigo_manual: atencionItems.codigoManual,
+        descripcion_manual: atencionItems.descripcionManual,
+        sucursal_nombre: sucursales.nombre,
+        obra_nombre: obrasSociales.nombre,
+        odo_nombre: odontologos.nombre,
+        nom_codigo: nomencladores.codigo,
+        nom_descripcion: nomencladores.descripcion,
+      })
+      .from(atencionItems)
+      .innerJoin(atenciones, eq(atencionItems.atencionId, atenciones.id))
+      .leftJoin(sucursales, eq(atenciones.sucursalId, sucursales.id))
+      .leftJoin(obrasSociales, eq(atenciones.obraSocialId, obrasSociales.id))
+      .leftJoin(odontologos, eq(atenciones.odontologoId, odontologos.id))
+      .leftJoin(nomencladores, eq(atencionItems.nomencladorId, nomencladores.id))
+      .where(eq(atenciones.dni, data.dni.trim()))
+      .orderBy(desc(atenciones.fecha), desc(atenciones.createdAt));
+    return rows.map((r) => ({
+      id: r.id,
+      atencion_id: r.atencion_id,
+      fecha: r.fecha,
+      primera_vez: r.primera_vez,
+      cantidad: r.cantidad,
+      monto: Number(r.monto),
+      facturable: r.facturable,
+      sucursal_nombre: r.sucursal_nombre,
+      obra_nombre: r.obra_nombre,
+      odo_nombre: r.odo_nombre,
+      codigo: r.nom_codigo ?? r.codigo_manual,
+      descripcion: r.nom_descripcion ?? r.descripcion_manual,
+    }));
+  });

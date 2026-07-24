@@ -19,6 +19,7 @@ import {
 import { FileSpreadsheet, FileText } from "lucide-react";
 import { downloadExcel, downloadPdf } from "@/lib/gestion/exports";
 import { esPlacaMio, esIncrustacion } from "@/lib/gestion/codigos";
+import { montoLinea, esFacturable } from "@/lib/gestion/reportes";
 
 const codeOf = (r: any) => r.nomencladores?.codigo ?? r.codigo_manual ?? "";
 const descOf = (r: any) => r.nomencladores?.descripcion ?? r.descripcion_manual ?? "";
@@ -60,7 +61,7 @@ function ReporteIomaPage() {
     const r = rows ?? [];
     return {
       cantidad: r.length,
-      ars: r.reduce((s: number, x: any) => s + Number(x.monto || 0), 0),
+      ars: r.filter(esFacturable).reduce((s: number, x: any) => s + montoLinea(x), 0),
       pacientes: new Set(r.map((x: any) => x.dni)).size,
     };
   }, [rows]);
@@ -99,7 +100,7 @@ function ReporteIomaPage() {
 
       const a = porOdo.get(odo) ?? { prestaciones: 0, ars: 0 };
       a.prestaciones++;
-      a.ars += Number(x.monto || 0);
+      if (esFacturable(x)) a.ars += montoLinea(x);
       porOdo.set(odo, a);
 
       if (x.facturable === false) {
@@ -142,7 +143,9 @@ function ReporteIomaPage() {
     Codigo: r.nomencladores?.codigo ?? r.codigo_manual ?? "",
     Descripcion: r.nomencladores?.descripcion ?? r.descripcion_manual ?? "",
     Cantidad: r.cantidad,
-    Monto: Number(r.monto),
+    MontoUnit: Number(r.monto),
+    MontoTotal: montoLinea(r),
+    Facturable: r.facturable === false ? "No" : "Sí",
   }));
 
   const onExcel = () => downloadExcel(`ioma-${desde}_${hasta}.xlsx`, "IOMA", exportRows);
@@ -161,7 +164,7 @@ function ReporteIomaPage() {
         "Código",
         "Descripción",
         "Cant.",
-        "Monto",
+        "Total",
       ],
       (rows ?? []).map((r: any) => [
         format(new Date(r.fecha + "T00:00"), "dd/MM/yyyy"),
@@ -172,7 +175,7 @@ function ReporteIomaPage() {
         r.nomencladores?.codigo ?? r.codigo_manual ?? "",
         r.nomencladores?.descripcion ?? r.descripcion_manual ?? "",
         r.cantidad,
-        fmt(Number(r.monto)),
+        fmt(montoLinea(r)),
       ]),
       `Total: ${total.cantidad} prestaciones · ${total.pacientes} pacientes · ${fmt(total.ars)}`,
     );

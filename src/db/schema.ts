@@ -14,17 +14,14 @@ import {
 import { sql } from "drizzle-orm";
 
 // Roles de la app (ex-Supabase app_role)
-export const appRole = pgEnum("app_role", [
-  "admin",
-  "administrativo",
-  "direccion",
-  "odontologo",
-]);
+export const appRole = pgEnum("app_role", ["admin", "administrativo", "direccion", "odontologo"]);
 
 // Clínicas / sucursales
 export const sucursales = pgTable("sucursales", {
   id: uuid("id").primaryKey().defaultRandom(),
   nombre: text("nombre").notNull().unique(),
+  // Slug corto para la URL del tótem (?clinica=caba). Único, opcional.
+  slug: text("slug").unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -194,6 +191,10 @@ export const arrivals = pgTable(
     cobertura: text("cobertura"),
     nombreApellido: text("nombre_apellido"),
     dni: text("dni").notNull(),
+    // Sucursal y piso de la llegada. El tótem los fija por query param en la URL
+    // (cada tablet abre /?clinica=<slug>&piso=<nombre>). null = tótem sin configurar.
+    sucursalId: uuid("sucursal_id").references(() => sucursales.id, { onDelete: "set null" }),
+    pisoId: uuid("piso_id").references(() => pisos.id, { onDelete: "set null" }),
     estado: text("estado").notNull().default("Pendiente"),
   },
   (t) => ({
@@ -232,3 +233,32 @@ export const atencionItems = pgTable(
     atencionItemsAtencionIdx: index("idx_atencion_items_atencion").on(t.atencionId),
   }),
 );
+
+// Asistencia a turnos de GHL, marcada localmente en Recepción (no escribe en GHL).
+// Una fila por turno (ghl_event_id) cuya asistencia se registró.
+export const turnoAsistencias = pgTable("turno_asistencias", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ghlEventId: text("ghl_event_id").notNull().unique(),
+  sucursalId: uuid("sucursal_id").references(() => sucursales.id, { onDelete: "set null" }),
+  fecha: date("fecha").notNull(),
+  asistio: boolean("asistio").notNull().default(true),
+  marcadoPor: text("marcado_por"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Ficha de paciente. Se puebla automáticamente al cargar atenciones (upsert por DNI) y
+// habilita el autocompletado por DNI en la carga. Global (un paciente puede ir a cualquier sede).
+export const pacientes = pgTable("pacientes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  dni: text("dni").notNull().unique(),
+  nombre: text("nombre").notNull(),
+  telefono: text("telefono"),
+  // Última obra social conocida (referencia, no histórico).
+  obraSocialId: uuid("obra_social_id").references(() => obrasSociales.id, {
+    onDelete: "set null",
+  }),
+  notas: text("notas"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

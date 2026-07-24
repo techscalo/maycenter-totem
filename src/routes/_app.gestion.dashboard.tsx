@@ -22,6 +22,7 @@ import {
   Legend,
 } from "recharts";
 import { format, subDays, parseISO } from "date-fns";
+import { montoLinea, montoUsdLinea, esFacturable } from "@/lib/gestion/reportes";
 
 export const Route = createFileRoute("/_app/gestion/dashboard")({
   component: DashboardPage,
@@ -60,10 +61,13 @@ function DashboardPage() {
 
   const kpis = useMemo(() => {
     const r = rows ?? [];
-    const totalArs = r.reduce((s, x: any) => s + Number(x.monto || 0), 0);
-    const totalUsd = r.reduce((s, x: any) => s + Number(x.monto_usd || 0), 0);
+    const fact = r.filter(esFacturable);
+    const totalArs = fact.reduce((s, x: any) => s + montoLinea(x), 0);
+    const totalUsd = fact.reduce((s, x: any) => s + montoUsdLinea(x), 0);
+    const produccion = r.reduce((s, x: any) => s + montoLinea(x), 0);
     const pacientes = new Set(r.map((x: any) => x.dni)).size;
-    return { count: r.length, totalArs, totalUsd, pacientes };
+    const nuevos = new Set(r.filter((x: any) => x.primera_vez).map((x: any) => x.dni)).size;
+    return { count: r.length, totalArs, totalUsd, produccion, pacientes, nuevos };
   }, [rows]);
 
   const serieDiaria = useMemo(() => {
@@ -71,7 +75,7 @@ function DashboardPage() {
     (rows ?? []).forEach((x: any) => {
       const k = x.fecha;
       const cur = map.get(k) ?? { fecha: k, monto: 0, cantidad: 0 };
-      cur.monto += Number(x.monto || 0);
+      cur.monto += esFacturable(x) ? montoLinea(x) : 0;
       cur.cantidad += 1;
       map.set(k, cur);
     });
@@ -81,18 +85,35 @@ function DashboardPage() {
   const porObra = useMemo(() => {
     const map = new Map<string, number>();
     (rows ?? []).forEach((x: any) => {
+      if (!esFacturable(x)) return;
       const k = x.obras_sociales?.nombre ?? "—";
-      map.set(k, (map.get(k) ?? 0) + Number(x.monto || 0));
+      map.set(k, (map.get(k) ?? 0) + montoLinea(x));
     });
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
+  }, [rows]);
+
+  // Pacientes nuevos (primera_vez) por obra social — DNI únicos.
+  const nuevosPorObra = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    (rows ?? []).forEach((x: any) => {
+      if (!x.primera_vez) return;
+      const k = x.obras_sociales?.nombre ?? "—";
+      const set = map.get(k) ?? new Set<string>();
+      set.add(x.dni);
+      map.set(k, set);
+    });
+    return Array.from(map.entries())
+      .map(([name, set]) => ({ name, value: set.size }))
+      .sort((a, b) => b.value - a.value);
   }, [rows]);
 
   const porOdontologo = useMemo(() => {
     const map = new Map<string, { name: string; monto: number; cantidad: number }>();
     (rows ?? []).forEach((x: any) => {
+      if (!esFacturable(x)) return;
       const k = x.odontologos?.nombre ?? "—";
       const cur = map.get(k) ?? { name: k, monto: 0, cantidad: 0 };
-      cur.monto += Number(x.monto || 0);
+      cur.monto += montoLinea(x);
       cur.cantidad += 1;
       map.set(k, cur);
     });
@@ -124,10 +145,12 @@ function DashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <Kpi label="Prestaciones" value={kpis.count} />
         <Kpi label="Pacientes únicos" value={kpis.pacientes} />
+        <Kpi label="Pacientes nuevos" value={kpis.nuevos} />
         <Kpi label="Facturado ARS" value={fmt(kpis.totalArs)} />
+        <Kpi label="Producción ARS" value={fmt(kpis.produccion)} />
         <Kpi label="Facturado USD" value={`U$D ${kpis.totalUsd.toLocaleString("es-AR")}`} />
       </div>
 
@@ -196,6 +219,29 @@ function DashboardPage() {
                 <Tooltip formatter={(v: number) => fmt(v)} />
               </PieChart>
             </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Pacientes nuevos por obra social</CardTitle>
+          </CardHeader>
+          <CardContent className="h-72">
+            {nuevosPorObra.length === 0 ? (
+              <div className="h-full grid place-items-center text-sm text-muted-foreground">
+                Sin pacientes nuevos en el período.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={nuevosPorObra} layout="vertical" margin={{ left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                  <XAxis type="number" allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" width={120} />
+                  <Tooltip />
+                  <Bar dataKey="value" name="Nuevos" fill="#0891b2" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 

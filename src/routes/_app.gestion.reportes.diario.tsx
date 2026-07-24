@@ -23,8 +23,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Download, FileSpreadsheet, FileText } from "lucide-react";
+import {
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Wallet,
+  Stethoscope,
+  Users,
+  ListChecks,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import { downloadExcel, downloadPdf } from "@/lib/gestion/exports";
+import { montoLinea, montoUsdLinea, esFacturable } from "@/lib/gestion/reportes";
 
 export const Route = createFileRoute("/_app/gestion/reportes/diario")({
   component: ReporteDiarioPage,
@@ -74,11 +85,13 @@ function ReporteDiarioPage() {
 
   const total = useMemo(() => {
     const r = rows ?? [];
+    const fact = r.filter(esFacturable);
     return {
       cantidad: r.length,
       pacientes: new Set(r.map((x: any) => x.atencion_id)).size,
-      ars: r.reduce((s: number, x: any) => s + Number(x.monto || 0), 0),
-      usd: r.reduce((s: number, x: any) => s + Number(x.monto_usd || 0), 0),
+      ars: fact.reduce((s: number, x: any) => s + montoLinea(x), 0),
+      usd: fact.reduce((s: number, x: any) => s + montoUsdLinea(x), 0),
+      produccion: r.reduce((s: number, x: any) => s + montoLinea(x), 0),
     };
   }, [rows]);
 
@@ -106,8 +119,10 @@ function ReporteDiarioPage() {
     Codigo: r.nomencladores?.codigo ?? r.codigo_manual ?? "",
     Descripcion: r.nomencladores?.descripcion ?? r.descripcion_manual ?? "",
     Cantidad: r.cantidad,
-    MontoARS: Number(r.monto),
+    MontoUnitARS: Number(r.monto),
+    MontoTotalARS: montoLinea(r),
     MontoUSD: r.monto_usd ? Number(r.monto_usd) : "",
+    Facturable: r.facturable === false ? "No" : "Sí",
   }));
 
   const onExcel = () => downloadExcel(`reporte-diario-${fecha}.xlsx`, "Diario", exportRows);
@@ -125,7 +140,8 @@ function ReporteDiarioPage() {
         "Código",
         "Descripción",
         "Cant.",
-        "Monto ARS",
+        "Fact.",
+        "Total ARS",
       ],
       (rows ?? []).map((r: any) => [
         r.odontologos?.nombre ?? "",
@@ -135,9 +151,10 @@ function ReporteDiarioPage() {
         r.nomencladores?.codigo ?? r.codigo_manual ?? "",
         r.nomencladores?.descripcion ?? r.descripcion_manual ?? "",
         r.cantidad,
-        fmt(Number(r.monto)),
+        r.facturable === false ? "No" : "Sí",
+        fmt(montoLinea(r)),
       ]),
-      `Total: ${total.pacientes} pacientes · ${total.cantidad} prestaciones · ${fmt(total.ars)}${total.usd ? ` · U$D ${total.usd.toLocaleString("es-AR")}` : ""}`,
+      `Facturado: ${fmt(total.ars)} · Producción: ${fmt(total.produccion)} · ${total.pacientes} pacientes · ${total.cantidad} prestaciones${total.usd ? ` · U$D ${total.usd.toLocaleString("es-AR")}` : ""}`,
     );
   };
 
@@ -200,10 +217,27 @@ function ReporteDiarioPage() {
       </Card>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Kpi label="Pacientes" value={total.pacientes} />
-        <Kpi label="Prestaciones" value={total.cantidad} />
-        <Kpi label="Facturado ARS" value={fmt(total.ars)} />
-        <Kpi label="Facturado USD" value={`U$D ${total.usd.toLocaleString("es-AR")}`} />
+        <Kpi label="Pacientes" value={total.pacientes} icon={<Users className="h-4 w-4" />} />
+        <Kpi
+          label="Prestaciones"
+          value={total.cantidad}
+          icon={<ListChecks className="h-4 w-4" />}
+        />
+        <Kpi
+          label="Facturado ARS"
+          value={fmt(total.ars)}
+          icon={<Wallet className="h-4 w-4" />}
+          hint="Lo que se factura (solo prestaciones facturables)"
+        />
+        <Kpi
+          label="Producción ARS"
+          value={fmt(total.produccion)}
+          icon={<Stethoscope className="h-4 w-4" />}
+          hint="Todo el trabajo realizado (incluye no facturables)"
+        />
+        {total.usd > 0 && (
+          <Kpi label="Facturado USD" value={`U$D ${total.usd.toLocaleString("es-AR")}`} />
+        )}
       </div>
 
       {grupos.length === 0 && (
@@ -214,62 +248,111 @@ function ReporteDiarioPage() {
         </Card>
       )}
 
-      {grupos.map(([odo, items]) => {
-        const subtotal = items.reduce((s, x: any) => s + Number(x.monto || 0), 0);
-        return (
-          <Card key={odo}>
-            <CardContent className="p-0">
-              <div className="px-4 py-3 border-b flex justify-between items-center bg-muted/40">
-                <div className="font-semibold">{odo}</div>
-                <div className="text-sm text-muted-foreground">
-                  {items.length} prestaciones ·{" "}
-                  <span className="font-medium text-foreground">{fmt(subtotal)}</span>
-                </div>
-              </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Paciente</TableHead>
-                    <TableHead>DNI</TableHead>
-                    <TableHead>Obra social</TableHead>
-                    <TableHead>Código</TableHead>
-                    <TableHead>Descripción</TableHead>
-                    <TableHead className="text-right">Cant.</TableHead>
-                    <TableHead className="text-right">Monto</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((r: any, i: number) => (
-                    <TableRow key={i}>
-                      <TableCell>{r.paciente}</TableCell>
-                      <TableCell>{r.dni}</TableCell>
-                      <TableCell>{r.obras_sociales?.nombre}</TableCell>
-                      <TableCell>{r.nomencladores?.codigo ?? r.codigo_manual}</TableCell>
-                      <TableCell className="text-xs">
-                        {r.nomencladores?.descripcion ?? r.descripcion_manual}
-                      </TableCell>
-                      <TableCell className="text-right">{r.cantidad}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        {fmt(Number(r.monto))}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        );
-      })}
+      {grupos.map(([odo, items]) => (
+        <GrupoOdontologo key={odo} odo={odo} items={items} fmt={fmt} />
+      ))}
     </div>
   );
 }
 
-function Kpi({ label, value }: { label: string; value: any }) {
+function GrupoOdontologo({
+  odo,
+  items,
+  fmt,
+}: {
+  odo: string;
+  items: any[];
+  fmt: (n: number) => string;
+}) {
+  const [abierto, setAbierto] = useState(true);
+  const facturado = items.filter(esFacturable).reduce((s, x: any) => s + montoLinea(x), 0);
+  const produccion = items.reduce((s, x: any) => s + montoLinea(x), 0);
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <button
+          type="button"
+          onClick={() => setAbierto((v) => !v)}
+          className="w-full px-4 py-3 border-b flex justify-between items-center bg-muted/40 hover:bg-muted/60 transition-colors text-left"
+        >
+          <div className="flex items-center gap-2 font-semibold">
+            {abierto ? (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            )}
+            {odo}
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {items.length} prestaciones · Facturado{" "}
+            <span className="font-medium text-foreground">{fmt(facturado)}</span>
+            {produccion !== facturado && <> · Producción {fmt(produccion)}</>}
+          </div>
+        </button>
+        {abierto && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Paciente</TableHead>
+                <TableHead>DNI</TableHead>
+                <TableHead>Obra social</TableHead>
+                <TableHead>Código</TableHead>
+                <TableHead>Descripción</TableHead>
+                <TableHead className="text-right">Cant.</TableHead>
+                <TableHead className="text-right">Unit.</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((r: any, i: number) => (
+                <TableRow key={i} className={r.facturable === false ? "opacity-60" : ""}>
+                  <TableCell>{r.paciente}</TableCell>
+                  <TableCell>{r.dni}</TableCell>
+                  <TableCell>{r.obras_sociales?.nombre}</TableCell>
+                  <TableCell>{r.nomencladores?.codigo ?? r.codigo_manual}</TableCell>
+                  <TableCell className="text-xs">
+                    {r.nomencladores?.descripcion ?? r.descripcion_manual}
+                    {r.facturable === false && (
+                      <span className="ml-1 text-[10px] uppercase tracking-wide text-amber-600">
+                        · no facturable
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">{r.cantidad}</TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {fmt(Number(r.monto))}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">{fmt(montoLinea(r))}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Kpi({
+  label,
+  value,
+  icon,
+  hint,
+}: {
+  label: string;
+  value: any;
+  icon?: React.ReactNode;
+  hint?: string;
+}) {
   return (
     <Card>
       <CardContent className="p-5">
-        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          {icon}
+          {label}
+        </div>
         <div className="text-2xl font-bold mt-1">{value}</div>
+        {hint && <div className="text-[11px] text-muted-foreground mt-1 leading-tight">{hint}</div>}
       </CardContent>
     </Card>
   );
