@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db/client";
 import { profiles, userRoles, sucursales, userSucursales } from "@/db/schema";
 
-export type AppRole = "admin" | "administrativo" | "direccion" | "odontologo";
+export type AppRole = "admin" | "administrativo" | "direccion" | "odontologo" | "recepcionista";
 
 export const getUserContext = createServerFn({ method: "GET" }).handler(async () => {
   const headers = new Headers(getRequestHeaders() as HeadersInit);

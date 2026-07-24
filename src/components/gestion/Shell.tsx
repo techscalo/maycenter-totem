@@ -61,7 +61,7 @@ const NAV: NavItem[] = [
 export function GestionShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const { profile, roles, isAdmin } = useUserContext();
+  const { profile, roles, isAdmin, isRecepcionista } = useUserContext();
   const puedeConfigurar =
     isAdmin || roles.includes("direccion") || roles.includes("administrativo");
   const { sucursales, sucursalId, sucursalNombre, puedeCambiar, setSucursalId } =
@@ -77,6 +77,13 @@ export function GestionShell({ children }: { children: ReactNode }) {
     import("@/lib/gestion/tour").then((m) => m.maybeStartTourForNewUser());
   }, []);
 
+  // Recepcionista: solo puede estar en Recepción; cualquier otra ruta lo redirige.
+  useEffect(() => {
+    if (isRecepcionista && !path.startsWith("/gestion/recepcion")) {
+      navigate({ to: "/gestion/recepcion" });
+    }
+  }, [isRecepcionista, path, navigate]);
+
   const toggleCollapsed = () =>
     setCollapsed((c) => {
       const next = !c;
@@ -88,6 +95,48 @@ export function GestionShell({ children }: { children: ReactNode }) {
     await authClient.signOut();
     navigate({ to: "/gestion/login" });
   };
+
+  // Recepcionista: layout sin sidebar, solo la página de Recepción.
+  if (isRecepcionista) {
+    return (
+      <div className="min-h-screen w-full bg-muted/30">
+        <header className="border-b bg-card px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <img src={logo} alt="Maycenter" className="h-8 w-8 rounded-lg object-contain" />
+            <span className="font-semibold truncate">Maycenter · Recepción</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {sucursales.length > 0 &&
+              (puedeCambiar ? (
+                <Select value={sucursalId} onValueChange={setSucursalId}>
+                  <SelectTrigger className="h-9 w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sucursales.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <span className="text-sm font-medium hidden sm:inline">{sucursalNombre}</span>
+              ))}
+            <Button variant="ghost" size="icon" onClick={toggle} aria-label="Cambiar tema">
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleLogout}>
+              <LogOut className="h-4 w-4 mr-2" /> Salir
+            </Button>
+          </div>
+        </header>
+        <main className="p-4 md:p-8">
+          {path.startsWith("/gestion/recepcion") ? children : null}
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen w-full bg-muted/30">

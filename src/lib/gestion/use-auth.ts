@@ -26,6 +26,7 @@ export function useUserContext() {
     sucursales: ctx?.sucursales ?? [],
     isAdmin: roles.includes("admin"),
     isDireccion: roles.includes("direccion"),
+    isRecepcionista: roles.includes("recepcionista"),
     isStaff: roles.includes("admin") || roles.includes("direccion"),
     isLoading: isPending || (!!session?.user && query.isLoading),
   };

@@ -1,10 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { KioskShell, BigOptionButton } from "@/components/KioskShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createArrival } from "@/lib/gestion/data.server";
+import { createArrival, getSucursalesTotem } from "@/lib/gestion/data.server";
 import {
   CheckCircle2,
   CalendarCheck2,
@@ -14,8 +15,13 @@ import {
   CreditCard,
   Wallet,
   HelpCircle,
+  Building2,
+  Layers,
 } from "lucide-react";
 import logo from "@/assets/maycenter-logo.png";
+
+// piso numérico → number para que la URL quede limpia (?piso=3, no ?piso="3").
+const pisoParam = (p: string) => (/^\d+$/.test(p) ? Number(p) : p);
 
 export const Route = createFileRoute("/")({
   // Cada tablet abre /?clinica=<slug>&piso=<nombre> (ej: /?clinica=caba&piso=3).
@@ -61,6 +67,28 @@ const COBERTURAS = [
 
 function KioskPage() {
   const { clinica, piso } = Route.useSearch();
+  const navigate = useNavigate();
+  const clinicaStr = clinica != null ? String(clinica) : "";
+
+  // Sin clínica en la URL → selector. Al elegir, queda en la URL con las queries
+  // (el kiosco se deja abierto ahí; volver a "/" muestra el selector para reconfigurar).
+  if (!clinicaStr) {
+    return (
+      <TotemSetup
+        onConfirm={(slug, pisoNombre) =>
+          navigate({
+            to: "/",
+            search: { clinica: slug, ...(pisoNombre ? { piso: pisoParam(pisoNombre) } : {}) },
+          })
+        }
+      />
+    );
+  }
+
+  return <KioskFlow clinica={clinicaStr} piso={piso != null ? String(piso) : null} />;
+}
+
+function KioskFlow({ clinica, piso }: { clinica: string; piso: string | null }) {
   const [step, setStep] = useState<Step>("idle");
   const [tipoLlegada, setTipoLlegada] = useState<string>("");
   const [tipoPaciente, setTipoPaciente] = useState<string>("");
@@ -396,6 +424,62 @@ function KioskPage() {
           Finalizar
         </Button>
         <p className="mt-4 text-xs text-muted-foreground">Volvemos al inicio en unos segundos…</p>
+      </div>
+    </KioskShell>
+  );
+}
+
+// Selector inicial cuando el tótem abre en "/" sin configurar. Elige clínica y piso,
+// guarda la selección y navega a la URL con las queries (queda por default).
+function TotemSetup({ onConfirm }: { onConfirm: (slug: string, piso: string | null) => void }) {
+  const { data: sucs = [] } = useQuery({
+    queryKey: ["totem-sucursales"],
+    queryFn: () => getSucursalesTotem(),
+  });
+  const [sel, setSel] = useState<{ slug: string; nombre: string; pisos: string[] } | null>(null);
+
+  if (sel && sel.pisos.length > 0) {
+    return (
+      <KioskShell
+        step={1}
+        totalSteps={2}
+        title={`${sel.nombre} — ¿qué piso?`}
+        subtitle="Este tótem queda configurado para este piso."
+        onBack={() => setSel(null)}
+      >
+        <div className="grid grid-cols-2 gap-5">
+          {sel.pisos.map((p) => (
+            <BigOptionButton
+              key={p}
+              icon={<Layers className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />}
+              label={`Piso ${p}`}
+              onClick={() => onConfirm(sel.slug, p)}
+            />
+          ))}
+        </div>
+      </KioskShell>
+    );
+  }
+
+  return (
+    <KioskShell
+      step={0}
+      totalSteps={2}
+      title="Configurá este tótem"
+      subtitle="Elegí la clínica de este dispositivo."
+    >
+      <div className="grid gap-5">
+        {sucs.map((s) => (
+          <BigOptionButton
+            key={s.slug}
+            icon={<Building2 className="h-12 w-12 md:h-14 md:w-14" strokeWidth={1.75} />}
+            label={s.nombre}
+            onClick={() => (s.pisos.length > 0 ? setSel(s) : onConfirm(s.slug, null))}
+          />
+        ))}
+        {sucs.length === 0 && (
+          <p className="text-center text-muted-foreground">Cargando clínicas…</p>
+        )}
       </div>
     </KioskShell>
   );
