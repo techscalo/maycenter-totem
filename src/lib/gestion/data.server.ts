@@ -14,7 +14,13 @@ import {
   arrivals,
   pacientes,
 } from "@/db/schema";
-import { requireAuth, requireAdmin, type AuthCtx } from "@/lib/gestion/session.server";
+import {
+  requireAuth,
+  requireAdmin,
+  requirePermission,
+  type AuthCtx,
+} from "@/lib/gestion/session.server";
+import { logAudit } from "@/lib/gestion/audit";
 
 // Resuelve la sucursal de trabajo: valida que la pedida sea una de las asignadas;
 // si no se pide ninguna, usa la primera asignada. Lanza si el usuario no tiene acceso.
@@ -297,9 +303,7 @@ export const createAtencion = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const ctx = await requireAuth();
-    if (!ctx.isStaff && !ctx.roles.includes("administrativo")) {
-      throw new Error("No tenés permiso para cargar prestaciones");
-    }
+    requirePermission(ctx, "prestaciones", "create");
     // Solo se puede cargar en una sucursal asignada (aplica a todos los roles).
     if (!ctx.sucursalIds.includes(data.sucursalId)) {
       throw new Error("Solo podés cargar en una sucursal asignada");
@@ -358,6 +362,14 @@ export const createAtencion = createServerFn({ method: "POST" })
         },
       });
 
+    await logAudit(ctx, {
+      action: "create",
+      resource: "prestacion",
+      entityId: atencion.id,
+      resumen: `Cargó prestación de ${data.paciente.trim()} (DNI ${data.dni.trim()}) con ${data.items.length} ítem(s)`,
+      sucursalId: data.sucursalId,
+    });
+
     return { ok: true, atencionId: atencion.id };
   });
 
@@ -365,10 +377,14 @@ export const deleteAtencion = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ atencionId: z.string().uuid() }).parse(i))
   .handler(async ({ data }) => {
     const ctx = await requireAuth();
-    if (!ctx.isStaff && !ctx.roles.includes("administrativo")) {
-      throw new Error("No tenés permiso");
-    }
+    requirePermission(ctx, "prestaciones", "delete");
     await db.delete(atenciones).where(eq(atenciones.id, data.atencionId));
+    await logAudit(ctx, {
+      action: "delete",
+      resource: "prestacion",
+      entityId: data.atencionId,
+      resumen: "Borró una atención completa",
+    });
     return { ok: true };
   });
 
@@ -387,7 +403,7 @@ export const updateAtencionItem = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const ctx = await requireAuth();
-    if (!ctx.isStaff && !ctx.roles.includes("administrativo")) throw new Error("Sin permiso");
+    requirePermission(ctx, "prestaciones", "edit");
     await db
       .update(atencionItems)
       .set({
@@ -400,6 +416,13 @@ export const updateAtencionItem = createServerFn({ method: "POST" })
         ...(data.estadoPlaca !== undefined ? { estadoPlaca: data.estadoPlaca } : {}),
       })
       .where(eq(atencionItems.id, data.itemId));
+    await logAudit(ctx, {
+      action: "update",
+      resource: "prestacion",
+      entityId: data.itemId,
+      resumen: "Editó un ítem de prestación",
+      meta: data,
+    });
     return { ok: true };
   });
 
@@ -407,7 +430,7 @@ export const deleteAtencionItem = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ itemId: z.string().uuid() }).parse(i))
   .handler(async ({ data }) => {
     const ctx = await requireAuth();
-    if (!ctx.isStaff && !ctx.roles.includes("administrativo")) throw new Error("Sin permiso");
+    requirePermission(ctx, "prestaciones", "delete");
     // borrar el item; si era el último de la atención, borrar la cabecera huérfana
     const [item] = await db
       .select({ atencionId: atencionItems.atencionId })
@@ -425,6 +448,12 @@ export const deleteAtencionItem = createServerFn({ method: "POST" })
         await db.delete(atenciones).where(eq(atenciones.id, item.atencionId));
       }
     }
+    await logAudit(ctx, {
+      action: "delete",
+      resource: "prestacion",
+      entityId: data.itemId,
+      resumen: "Borró un ítem de prestación",
+    });
     return { ok: true };
   });
 
@@ -443,7 +472,7 @@ export const updateAtencionCabecera = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const ctx = await requireAuth();
-    if (!ctx.isStaff && !ctx.roles.includes("administrativo")) throw new Error("Sin permiso");
+    requirePermission(ctx, "prestaciones", "edit");
     await db
       .update(atenciones)
       .set({
@@ -455,6 +484,13 @@ export const updateAtencionCabecera = createServerFn({ method: "POST" })
         updatedAt: new Date(),
       })
       .where(eq(atenciones.id, data.atencionId));
+    await logAudit(ctx, {
+      action: "update",
+      resource: "prestacion",
+      entityId: data.atencionId,
+      resumen: "Editó la cabecera de una atención",
+      meta: data,
+    });
     return { ok: true };
   });
 
@@ -465,16 +501,26 @@ export const updateAtencionCabecera = createServerFn({ method: "POST" })
 export const createSucursal = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ nombre: z.string().min(1) }).parse(i))
   .handler(async ({ data }) => {
-    await requireAdmin();
-    await db.insert(sucursales).values({ nombre: data.nombre.trim() });
+    const ctx = await requireAdmin();
+    const [row] = await db
+      .insert(sucursales)
+      .values({ nombre: data.nombre.trim() })
+      .returning({ id: sucursales.id });
+    await logAudit(ctx, {
+      action: "create",
+      resource: "sucursal",
+      entityId: row.id,
+      resumen: `Creó la sucursal "${data.nombre.trim()}"`,
+    });
     return { ok: true };
   });
 
 export const deleteSucursal = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data }) => {
-    await requireAdmin();
+    const ctx = await requireAdmin();
     await db.delete(sucursales).where(eq(sucursales.id, data.id));
+    await logAudit(ctx, { action: "delete", resource: "sucursal", entityId: data.id });
     return { ok: true };
   });
 
@@ -483,16 +529,27 @@ export const createPiso = createServerFn({ method: "POST" })
     z.object({ nombre: z.string().min(1), sucursalId: z.string().uuid() }).parse(i),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
-    await db.insert(pisos).values({ nombre: data.nombre.trim(), sucursalId: data.sucursalId });
+    const ctx = await requireAdmin();
+    const [row] = await db
+      .insert(pisos)
+      .values({ nombre: data.nombre.trim(), sucursalId: data.sucursalId })
+      .returning({ id: pisos.id });
+    await logAudit(ctx, {
+      action: "create",
+      resource: "piso",
+      entityId: row.id,
+      resumen: `Creó el piso "${data.nombre.trim()}"`,
+      sucursalId: data.sucursalId,
+    });
     return { ok: true };
   });
 
 export const deletePiso = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data }) => {
-    await requireAdmin();
+    const ctx = await requireAdmin();
     await db.delete(pisos).where(eq(pisos.id, data.id));
+    await logAudit(ctx, { action: "delete", resource: "piso", entityId: data.id });
     return { ok: true };
   });
 
@@ -501,29 +558,43 @@ export const createObraSocial = createServerFn({ method: "POST" })
     z.object({ nombre: z.string().min(1), esParticular: z.boolean().default(false) }).parse(i),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
-    await db
+    const ctx = await requireAdmin();
+    const [row] = await db
       .insert(obrasSociales)
-      .values({ nombre: data.nombre.trim(), esParticular: data.esParticular });
+      .values({ nombre: data.nombre.trim(), esParticular: data.esParticular })
+      .returning({ id: obrasSociales.id });
+    await logAudit(ctx, {
+      action: "create",
+      resource: "obra_social",
+      entityId: row.id,
+      resumen: `Creó la obra social "${data.nombre.trim()}"`,
+    });
     return { ok: true };
   });
 
 export const toggleObraSocial = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid(), activa: z.boolean() }).parse(i))
   .handler(async ({ data }) => {
-    await requireAdmin();
+    const ctx = await requireAdmin();
     await db
       .update(obrasSociales)
       .set({ activa: data.activa })
       .where(eq(obrasSociales.id, data.id));
+    await logAudit(ctx, {
+      action: "update",
+      resource: "obra_social",
+      entityId: data.id,
+      resumen: data.activa ? "Activó una obra social" : "Desactivó una obra social",
+    });
     return { ok: true };
   });
 
 export const deleteObraSocial = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data }) => {
-    await requireAdmin();
+    const ctx = await requireAdmin();
     await db.delete(obrasSociales).where(eq(obrasSociales.id, data.id));
+    await logAudit(ctx, { action: "delete", resource: "obra_social", entityId: data.id });
     return { ok: true };
   });
 
@@ -539,12 +610,22 @@ export const createOdontologo = createServerFn({ method: "POST" })
       .parse(i),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
-    await db.insert(odontologos).values({
-      nombre: data.nombre.trim(),
-      numeroOd: data.numeroOd?.trim() || null,
+    const ctx = await requireAdmin();
+    const [row] = await db
+      .insert(odontologos)
+      .values({
+        nombre: data.nombre.trim(),
+        numeroOd: data.numeroOd?.trim() || null,
+        sucursalId: data.sucursalId,
+        pisoId: data.pisoId || null,
+      })
+      .returning({ id: odontologos.id });
+    await logAudit(ctx, {
+      action: "create",
+      resource: "odontologo",
+      entityId: row.id,
+      resumen: `Creó al odontólogo "${data.nombre.trim()}"`,
       sucursalId: data.sucursalId,
-      pisoId: data.pisoId || null,
     });
     return { ok: true };
   });
@@ -563,7 +644,7 @@ export const updateOdontologo = createServerFn({ method: "POST" })
       .parse(i),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    const ctx = await requireAdmin();
     await db
       .update(odontologos)
       .set({
@@ -574,14 +655,22 @@ export const updateOdontologo = createServerFn({ method: "POST" })
         ...(data.activo !== undefined ? { activo: data.activo } : {}),
       })
       .where(eq(odontologos.id, data.id));
+    await logAudit(ctx, {
+      action: "update",
+      resource: "odontologo",
+      entityId: data.id,
+      resumen: "Editó un odontólogo",
+      meta: data,
+    });
     return { ok: true };
   });
 
 export const deleteOdontologo = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data }) => {
-    await requireAdmin();
+    const ctx = await requireAdmin();
     await db.delete(odontologos).where(eq(odontologos.id, data.id));
+    await logAudit(ctx, { action: "delete", resource: "odontologo", entityId: data.id });
     return { ok: true };
   });
 
@@ -599,14 +688,24 @@ export const createNomenclador = createServerFn({ method: "POST" })
       .parse(i),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
-    await db.insert(nomencladores).values({
-      obraSocialId: data.obraSocialId,
-      plan: data.plan ?? null,
-      codigo: data.codigo.trim(),
-      descripcion: data.descripcion.trim(),
-      monto: String(data.monto),
-      montoPaciente: data.montoPaciente == null ? null : String(data.montoPaciente),
+    const ctx = await requireAdmin();
+    const [row] = await db
+      .insert(nomencladores)
+      .values({
+        obraSocialId: data.obraSocialId,
+        plan: data.plan ?? null,
+        codigo: data.codigo.trim(),
+        descripcion: data.descripcion.trim(),
+        monto: String(data.monto),
+        montoPaciente: data.montoPaciente == null ? null : String(data.montoPaciente),
+      })
+      .returning({ id: nomencladores.id });
+    await logAudit(ctx, {
+      action: "create",
+      resource: "precio",
+      entityId: row.id,
+      resumen: `Creó código ${data.codigo.trim()} ($${data.monto})`,
+      meta: { tipo: "nomenclador", obraSocialId: data.obraSocialId, plan: data.plan ?? null },
     });
     return { ok: true };
   });
@@ -626,7 +725,7 @@ export const updateNomenclador = createServerFn({ method: "POST" })
       .parse(i),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    const ctx = await requireAdmin();
     const set: Record<string, unknown> = {};
     if (data.plan !== undefined) set.plan = data.plan;
     if (data.codigo !== undefined) set.codigo = data.codigo.trim();
@@ -637,14 +736,28 @@ export const updateNomenclador = createServerFn({ method: "POST" })
     if (data.activo !== undefined) set.activo = data.activo;
     if (Object.keys(set).length === 0) return { ok: true };
     await db.update(nomencladores).set(set).where(eq(nomencladores.id, data.id));
+    await logAudit(ctx, {
+      action: "update",
+      resource: "precio",
+      entityId: data.id,
+      resumen:
+        data.monto !== undefined ? `Actualizó un precio a $${data.monto}` : "Editó un código",
+      meta: { tipo: "nomenclador", ...data },
+    });
     return { ok: true };
   });
 
 export const deleteNomenclador = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data }) => {
-    await requireAdmin();
+    const ctx = await requireAdmin();
     await db.delete(nomencladores).where(eq(nomencladores.id, data.id));
+    await logAudit(ctx, {
+      action: "delete",
+      resource: "precio",
+      entityId: data.id,
+      meta: { tipo: "nomenclador" },
+    });
     return { ok: true };
   });
 
@@ -680,11 +793,21 @@ export const createServicioParticular = createServerFn({ method: "POST" })
       .parse(i),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
-    await db.insert(serviciosParticulares).values({
-      codigo: data.codigo?.trim() || null,
-      descripcion: data.descripcion.trim(),
-      precioUsd: String(data.precioUsd),
+    const ctx = await requireAdmin();
+    const [row] = await db
+      .insert(serviciosParticulares)
+      .values({
+        codigo: data.codigo?.trim() || null,
+        descripcion: data.descripcion.trim(),
+        precioUsd: String(data.precioUsd),
+      })
+      .returning({ id: serviciosParticulares.id });
+    await logAudit(ctx, {
+      action: "create",
+      resource: "precio",
+      entityId: row.id,
+      resumen: `Creó servicio particular "${data.descripcion.trim()}" (USD ${data.precioUsd})`,
+      meta: { tipo: "particular" },
     });
     return { ok: true };
   });
@@ -694,19 +817,32 @@ export const updateServicioParticular = createServerFn({ method: "POST" })
     z.object({ id: z.string().uuid(), precioUsd: z.number().min(0) }).parse(i),
   )
   .handler(async ({ data }) => {
-    await requireAdmin();
+    const ctx = await requireAdmin();
     await db
       .update(serviciosParticulares)
       .set({ precioUsd: String(data.precioUsd) })
       .where(eq(serviciosParticulares.id, data.id));
+    await logAudit(ctx, {
+      action: "update",
+      resource: "precio",
+      entityId: data.id,
+      resumen: `Actualizó precio particular a USD ${data.precioUsd}`,
+      meta: { tipo: "particular" },
+    });
     return { ok: true };
   });
 
 export const deleteServicioParticular = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) => z.object({ id: z.string().uuid() }).parse(i))
   .handler(async ({ data }) => {
-    await requireAdmin();
+    const ctx = await requireAdmin();
     await db.delete(serviciosParticulares).where(eq(serviciosParticulares.id, data.id));
+    await logAudit(ctx, {
+      action: "delete",
+      resource: "precio",
+      entityId: data.id,
+      meta: { tipo: "particular" },
+    });
     return { ok: true };
   });
 

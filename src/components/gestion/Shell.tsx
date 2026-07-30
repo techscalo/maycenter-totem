@@ -16,11 +16,13 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Building2,
+  History,
   Sun,
   Moon,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { useUserContext } from "@/lib/gestion/use-auth";
+import type { Resource } from "@/lib/gestion/permissions";
 import { useSucursalActiva } from "@/lib/gestion/sucursal-activa";
 import { useTheme } from "@/lib/gestion/theme";
 import { cn } from "@/lib/utils";
@@ -39,31 +41,42 @@ type NavItem = {
   label: string;
   icon: typeof LayoutDashboard;
   exact?: boolean;
-  adminOnly?: boolean;
-  configOnly?: boolean;
+  // Permiso requerido para ver el item. Sin resource = siempre visible.
+  resource?: Resource;
+  action?: string;
 };
 
 const NAV: NavItem[] = [
-  { to: "/gestion", label: "Inicio", icon: LayoutDashboard, exact: true },
-  { to: "/gestion/dashboard", label: "Dashboard", icon: BarChart3 },
-  { to: "/gestion/recepcion", label: "Recepción", icon: ClipboardList },
-  { to: "/gestion/prestaciones/nueva", label: "Nueva prestación", icon: ListPlus },
-  { to: "/gestion/prestaciones", label: "Prestaciones", icon: Table2 },
-  { to: "/gestion/pacientes", label: "Pacientes", icon: Users },
-  { to: "/gestion/odontologos", label: "Odontólogos", icon: Stethoscope },
-  { to: "/gestion/precios", label: "Precios", icon: DollarSign },
-  { to: "/gestion/reportes/diario", label: "Reporte diario", icon: FileText },
-  { to: "/gestion/reportes/ioma", label: "Reporte IOMA", icon: FileText },
-  { to: "/gestion/admin", label: "Configuración", icon: Settings, configOnly: true },
+  { to: "/gestion", label: "Inicio", icon: LayoutDashboard, exact: true, resource: "inicio" },
+  { to: "/gestion/dashboard", label: "Dashboard", icon: BarChart3, resource: "dashboard" },
+  { to: "/gestion/recepcion", label: "Recepción", icon: ClipboardList, resource: "recepcion" },
+  {
+    to: "/gestion/prestaciones/nueva",
+    label: "Nueva prestación",
+    icon: ListPlus,
+    resource: "prestaciones",
+    action: "create",
+  },
+  { to: "/gestion/prestaciones", label: "Prestaciones", icon: Table2, resource: "prestaciones" },
+  { to: "/gestion/pacientes", label: "Pacientes", icon: Users, resource: "pacientes" },
+  { to: "/gestion/odontologos", label: "Odontólogos", icon: Stethoscope, resource: "odontologos" },
+  { to: "/gestion/precios", label: "Precios", icon: DollarSign, resource: "precios" },
+  {
+    to: "/gestion/reportes/diario",
+    label: "Reporte diario",
+    icon: FileText,
+    resource: "reporte_diario",
+  },
+  { to: "/gestion/reportes/ioma", label: "Reporte IOMA", icon: FileText, resource: "reporte_ioma" },
+  { to: "/gestion/registro", label: "Registro de cambios", icon: History, resource: "registro" },
+  { to: "/gestion/admin", label: "Configuración", icon: Settings, resource: "configuracion" },
   { to: "/gestion/ayuda", label: "Ayuda", icon: HelpCircle },
 ];
 
 export function GestionShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const { profile, roles, isAdmin, isRecepcionista } = useUserContext();
-  const puedeConfigurar =
-    isAdmin || roles.includes("direccion") || roles.includes("administrativo");
+  const { profile, roles, isRecepcionista, can } = useUserContext();
   const { sucursales, sucursalId, sucursalNombre, puedeCambiar, setSucursalId } =
     useSucursalActiva();
   const { theme, toggle } = useTheme();
@@ -224,7 +237,7 @@ export function GestionShell({ children }: { children: ReactNode }) {
             {!collapsed && "Colapsar menú"}
           </button>
 
-          {NAV.filter((n) => (!n.adminOnly || isAdmin) && (!n.configOnly || puedeConfigurar)).map(
+          {NAV.filter((n) => !n.resource || can(n.resource, n.action ?? "view")).map(
             (item) => {
               const Icon = item.icon;
               const active = item.exact ? path === item.to : path.startsWith(item.to);

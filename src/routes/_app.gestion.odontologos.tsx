@@ -32,8 +32,14 @@ import {
   deleteOdontologo,
 } from "@/lib/gestion/data.server";
 
+import { PermissionGate } from "@/components/gestion/PermissionGate";
+
 export const Route = createFileRoute("/_app/gestion/odontologos")({
-  component: OdontologosPage,
+  component: () => (
+    <PermissionGate resource="odontologos">
+      <OdontologosPage />
+    </PermissionGate>
+  ),
 });
 
 type SortKey = "nombre" | "numeroOd" | "sucursalNombre" | "pisoNombre" | "activo";

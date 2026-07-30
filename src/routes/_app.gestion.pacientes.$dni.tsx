@@ -15,8 +15,14 @@ import {
 } from "@/components/ui/table";
 import { ArrowLeft, Sparkles } from "lucide-react";
 
+import { PermissionGate } from "@/components/gestion/PermissionGate";
+
 export const Route = createFileRoute("/_app/gestion/pacientes/$dni")({
-  component: PacienteFicha,
+  component: () => (
+    <PermissionGate resource="pacientes">
+      <PacienteFicha />
+    </PermissionGate>
+  ),
 });
 
 function PacienteFicha() {

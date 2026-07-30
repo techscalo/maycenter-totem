@@ -8,6 +8,7 @@ import {
   numeric,
   date,
   timestamp,
+  jsonb,
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
@@ -71,6 +72,23 @@ export const userSucursales = pgTable(
   },
   (t) => ({
     userSucursalUq: uniqueIndex("user_sucursales_user_sucursal_uq").on(t.userId, t.sucursalId),
+  }),
+);
+
+// Permisos página+acción por usuario. Presencia de fila = permitido. Si un usuario
+// no tiene ninguna fila, en runtime se usa el preset de su rol (ver permissions.ts).
+export const userPermissions = pgTable(
+  "user_permissions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id").notNull(),
+    resource: text("resource").notNull(),
+    action: text("action").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userPermUq: uniqueIndex("user_permissions_uq").on(t.userId, t.resource, t.action),
+    userPermUserIdx: index("idx_user_permissions_user").on(t.userId),
   }),
 );
 
@@ -247,11 +265,37 @@ export const turnoAsistencias = pgTable("turno_asistencias", {
   ghlEventId: text("ghl_event_id").notNull().unique(),
   sucursalId: uuid("sucursal_id").references(() => sucursales.id, { onDelete: "set null" }),
   fecha: date("fecha").notNull(),
+  // Deprecado en favor de `estado`; se conserva por compatibilidad de datos.
   asistio: boolean("asistio").notNull().default(true),
+  // Flujo del turno: en_recepcion | en_consultorio | finalizado | ausente (null = sin marcar).
+  estado: text("estado"),
   marcadoPor: text("marcado_por"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Registro de cambios ("buchón"): una fila por alta/edición/baja de una entidad de negocio.
+// actor_nombre es snapshot (no se pierde si el usuario se borra). meta = detalle libre.
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    actorUserId: text("actor_user_id"),
+    actorNombre: text("actor_nombre"),
+    action: text("action").notNull(), // create | update | delete
+    resource: text("resource").notNull(), // prestacion | paciente | precio | usuario | ...
+    entityId: text("entity_id"),
+    resumen: text("resumen"),
+    meta: jsonb("meta"),
+    sucursalId: uuid("sucursal_id").references(() => sucursales.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    auditCreatedIdx: index("idx_audit_created").on(t.createdAt),
+    auditActorIdx: index("idx_audit_actor").on(t.actorUserId),
+    auditResourceIdx: index("idx_audit_resource").on(t.resource),
+  }),
+);
 
 // Ficha de paciente. Se puebla automáticamente al cargar atenciones (upsert por DNI) y
 // habilita el autocompletado por DNI en la carga. Global (un paciente puede ir a cualquier sede).

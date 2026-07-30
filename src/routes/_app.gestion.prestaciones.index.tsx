@@ -33,8 +33,14 @@ import {
 } from "@/components/ui/dialog";
 import { montoLinea, montoUsdLinea } from "@/lib/gestion/reportes";
 
+import { PermissionGate } from "@/components/gestion/PermissionGate";
+
 export const Route = createFileRoute("/_app/gestion/prestaciones/")({
-  component: PrestacionesList,
+  component: () => (
+    <PermissionGate resource="prestaciones">
+      <PrestacionesList />
+    </PermissionGate>
+  ),
 });
 
 type Prestacion = {

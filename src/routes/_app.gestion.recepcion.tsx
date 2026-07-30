@@ -3,8 +3,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecepcionPanel } from "@/components/gestion/RecepcionPanel";
 import { TurnosDelDia } from "@/components/gestion/TurnosDelDia";
 
+import { PermissionGate } from "@/components/gestion/PermissionGate";
+
 export const Route = createFileRoute("/_app/gestion/recepcion")({
-  component: RecepcionPage,
+  component: () => (
+    <PermissionGate resource="recepcion">
+      <RecepcionPage />
+    </PermissionGate>
+  ),
 });
 
 function RecepcionPage() {

@@ -169,3 +169,54 @@ Plan: `~/.claude/plans/replicated-puzzling-salamander.md`. Feedback de Juli prob
 - Cargar contactos de GHL con **Estado = "Cliente-R" o "Cliente-F"** (custom field Estados CABA `8QI79ujL3Y7BO3M5scAf`) a la tabla `pacientes`, asignados a la clínica que corresponde.
 - Si un contacto NO tiene ese estado pero **tiene turno** → probable paciente nuevo (marcar/derivar como tal).
 - Traer DNI (`rjdIgjhi3iPZFpRVDP7h`), nombre, teléfono, obra social (`J1dLEUewkTaqVthYDOak`). Dedup por DNI (upsert). Definir volumen y correr con dry-run primero.
+
+---
+
+# Plan de integración (28/07/2026) — 3 features
+
+Plan aprobado: `~/.claude/plans/elegant-finding-toucan.md`. Decisiones: permisos por cuenta con preset por rol, granularidad páginas+acciones, audit de crear/editar/borrar, config GHL por env. Orden de entrega: F3 → F1 → F2.
+
+## Feature 3 — Calendarios GHL Calle 10 + Diagonal 77 ✅ (código + staging)
+- [x] `ghl.server.ts`: `ghlConfigForSlug` como mapa slug→{locEnv,pitEnv,dniField} (caba/calle10/diag77).
+- [x] Throttle `mapLimit(cals, 6)` en `listDayEvents` — 31 cals Calle10 / 17 Diag77 → evita 429.
+- [x] Env `GHL_LAPLATA_*` + `GHL_DIAG77_*` en `.env` + `.env.example`. PITs verificadas vigentes 28/07. **Falta cargarlas en Vercel.**
+- [x] Slugs DB confirmados (`caba`/`calle10`/`diag77`). Validar turnos reales en Recepción (con sesión).
+
+## Feature 1 — Registro de cambios (audit log) ✅ (código + staging)
+- [x] Tabla `audit_log` (migración `0011`, aplicada staging) + `schema.ts`.
+- [x] `audit.server.ts`: `logAudit(ctx, {...})` (no lanza) + `listAuditLog` + `listAuditActores`.
+- [x] Instrumentadas mutaciones de prestaciones/precios/odontólogos/OS/sucursales/pisos/usuarios/asistencia.
+- [x] Página `/gestion/registro` (tabla + filtros usuario/sección/acción/fechas) + item en NAV.
+
+## Feature 2 — Accesos por cuenta ✅ (código + staging)
+- [x] 2a: `SucursalesChecklist` (multi-sede) en alta + editor; "Ambas"→"Todas".
+- [x] 2b: `permissions.ts` (RESOURCES + ROLE_PRESETS + `can`/`effectivePermissions`) + tabla `user_permissions` (migración `0012`, staging).
+- [x] 2b: `session.server.ts` expone `permisos` + `requirePermission`; enforcement en prestaciones (create/edit/delete).
+- [x] 2b: `getUserContext`+`use-auth` exponen `permisos`/`can()`; NAV + guards de ruta (`PermissionGate`) por permiso.
+- [x] 2b: editor de matriz recurso×acción por usuario + "aplicar preset del rol" en Configuración → Usuarios.
+
+**tsc limpio + smoke (home/login/registro 200).** Doc de testing: `~/Desktop/maycenter-totem-QA.md`.
+
+### Pendiente operativo de esta tanda
+- [ ] Cargar en **Vercel** las 4 env `GHL_LAPLATA_*` / `GHL_DIAG77_*`.
+- [ ] Aplicar migraciones **0011 y 0012 en `main`** (prod) al validar staging (`scripts/apply-migration.mjs`).
+- [ ] (Mejora opcional) ocultar botones crear/editar/borrar dentro de cada página según `can()` — hoy el candado real está en NAV + guards + backend; si un usuario fuerza la acción, el backend la rechaza.
+
+## Deuda previa relevante (bloquea validación end-to-end)
+- [ ] Migraciones **0007, 0008, 0009 pendientes en `main`** (prod) — aplicar con script idempotente al validar staging.
+
+---
+
+# Mejoras UI Recepción + bug + sidebar (30/07/2026) ✅ (código + staging, tsc limpio)
+Plan: `~/.claude/plans/elegant-finding-toucan.md`.
+- [x] Estado de flujo del turno (🟡 recepción / 🔵 consultorio / 🟢 finalizado / ⚫ ausente) reemplaza asistió/ausente. Migración `0013` (col `estado` + backfill) aplicada staging. GHL: finalizado→showed, ausente→noshow; intermedios no tocan GHL. `marcarAsistenciaTurno`→`marcarEstadoTurno`.
+- [x] Columnas configurables (dropdown, persiste en localStorage); DNI y "Agendado por" ocultas por defecto.
+- [x] Filtros nuevos: por agenda y por estado (+ fecha/buscar; buscar ahora incluye obra social y teléfono).
+- [x] Columnas nuevas: **Obra social** (custom field GHL por sede) y **Hora de llegada** (check-in del tótem).
+- [x] Vinculación tótem→lista: check-in en tótem marca el turno 🟡 En recepción automático (estado efectivo derivado del arrival).
+- [x] Bug carga prestación: inputs cantidad/monto permiten vaciar (antes `|| 1`/`|| 0` forzaba el valor).
+- [x] Sidebar: ya colapsa a íconos (sin cambios; cumple lo pedido).
+
+### Pendiente
+- [ ] Aplicar migración `0013` en **`main`** al validar staging.
+- [ ] Verificar en navegador el flujo de estados + reflejo showed/noshow en GHL.

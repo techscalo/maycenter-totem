@@ -24,8 +24,14 @@ import {
 import { format, subDays, parseISO } from "date-fns";
 import { montoLinea, montoUsdLinea, esFacturable } from "@/lib/gestion/reportes";
 
+import { PermissionGate } from "@/components/gestion/PermissionGate";
+
 export const Route = createFileRoute("/_app/gestion/dashboard")({
-  component: DashboardPage,
+  component: () => (
+    <PermissionGate resource="dashboard">
+      <DashboardPage />
+    </PermissionGate>
+  ),
 });
 
 const COLORS = [

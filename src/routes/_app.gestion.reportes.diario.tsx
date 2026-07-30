@@ -37,8 +37,14 @@ import {
 import { downloadExcel, downloadPdf } from "@/lib/gestion/exports";
 import { montoLinea, montoUsdLinea, esFacturable } from "@/lib/gestion/reportes";
 
+import { PermissionGate } from "@/components/gestion/PermissionGate";
+
 export const Route = createFileRoute("/_app/gestion/reportes/diario")({
-  component: ReporteDiarioPage,
+  component: () => (
+    <PermissionGate resource="reporte_diario">
+      <ReporteDiarioPage />
+    </PermissionGate>
+  ),
 });
 
 function ReporteDiarioPage() {

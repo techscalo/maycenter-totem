@@ -2,9 +2,14 @@ import { getRequestHeaders } from "@tanstack/react-start/server";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/db/client";
-import { userRoles, userSucursales } from "@/db/schema";
+import { userRoles, userSucursales, userPermissions } from "@/db/schema";
+import {
+  effectivePermissions,
+  can as canPermission,
+  type Resource,
+} from "@/lib/gestion/permissions";
 
-export type AppRole = "admin" | "administrativo" | "direccion" | "odontologo";
+export type AppRole = "admin" | "administrativo" | "direccion" | "odontologo" | "recepcionista";
 
 export type AuthCtx = {
   userId: string;
@@ -12,6 +17,7 @@ export type AuthCtx = {
   isStaff: boolean;
   isAdmin: boolean;
   sucursalIds: string[];
+  permisos: Set<string>;
 };
 
 export async function requireAuth(): Promise<AuthCtx> {
@@ -31,13 +37,30 @@ export async function requireAuth(): Promise<AuthCtx> {
     .from(userSucursales)
     .where(eq(userSucursales.userId, userId));
 
+  const permRows = await db
+    .select({ resource: userPermissions.resource, action: userPermissions.action })
+    .from(userPermissions)
+    .where(eq(userPermissions.userId, userId));
+  const permisos = effectivePermissions(
+    roles,
+    permRows.map((p) => `${p.resource}:${p.action}`),
+  );
+
   return {
     userId,
     roles,
     isStaff: roles.includes("admin") || roles.includes("direccion"),
     isAdmin: roles.includes("admin"),
     sucursalIds: sucRows.map((r) => r.sucursalId),
+    permisos,
   };
+}
+
+// Lanza si el usuario no tiene el permiso resource:action (admin siempre pasa).
+export function requirePermission(ctx: AuthCtx, resource: Resource, action: string): void {
+  if (!canPermission(ctx.roles, ctx.permisos, resource, action)) {
+    throw new Error("No tenés permiso para esta acción");
+  }
 }
 
 export async function requireAdmin(): Promise<AuthCtx> {

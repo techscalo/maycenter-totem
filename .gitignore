@@ -31,6 +31,9 @@ dist-ssr
 scripts/out/
 .dev.vars
 
+# Script de migración one-shot con credenciales GHL embebidas (no subir)
+scripts/migrate-diag77-to-gb8.mjs
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
