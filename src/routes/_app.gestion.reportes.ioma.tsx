@@ -24,8 +24,14 @@ import { montoLinea, esFacturable } from "@/lib/gestion/reportes";
 const codeOf = (r: any) => r.nomencladores?.codigo ?? r.codigo_manual ?? "";
 const descOf = (r: any) => r.nomencladores?.descripcion ?? r.descripcion_manual ?? "";
 
+import { PermissionGate } from "@/components/gestion/PermissionGate";
+
 export const Route = createFileRoute("/_app/gestion/reportes/ioma")({
-  component: ReporteIomaPage,
+  component: () => (
+    <PermissionGate resource="reporte_ioma">
+      <ReporteIomaPage />
+    </PermissionGate>
+  ),
 });
 
 function ReporteIomaPage() {

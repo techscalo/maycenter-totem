@@ -1,5 +1,5 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +57,13 @@ import {
   deleteGestionUser,
 } from "@/lib/gestion/users.functions";
 import {
+  RESOURCES,
+  RESOURCE_LABELS,
+  ACTION_LABELS,
+  presetForRole,
+  type Resource,
+} from "@/lib/gestion/permissions";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -69,9 +76,8 @@ export const Route = createFileRoute("/_app/gestion/admin")({
 });
 
 function AdminPage() {
-  const { isAdmin, roles, isLoading } = useUserContext();
-  const puedeConfigurar =
-    isAdmin || roles.includes("direccion") || roles.includes("administrativo");
+  const { isAdmin, can, isLoading } = useUserContext();
+  const puedeConfigurar = can("configuracion", "view");
   if (isLoading) return <div className="text-sm text-muted-foreground">Cargando…</div>;
   if (!puedeConfigurar) return <Navigate to="/gestion" />;
 
@@ -841,17 +847,68 @@ function ParticularesTab() {
   );
 }
 
-// Traduce la opción del selector (id de sede o "all") a la lista de sucursales asignadas.
-function scopeToIds(val: string, all: { id: string }[]): string[] {
-  if (val === "all") return all.map((s) => s.id);
-  return val ? [val] : [];
+// Checklist de sucursales (multi-selección; "Todas" marca todas las sedes).
+function SucursalesChecklist({
+  all,
+  value,
+  onChange,
+}: {
+  all: { id: string; nombre: string }[];
+  value: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const allIds = all.map((s) => s.id);
+  const todas = all.length > 0 && value.length === all.length;
+  const toggle = (id: string) =>
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+      <label className="flex items-center gap-1.5 text-sm font-medium">
+        <input
+          type="checkbox"
+          checked={todas}
+          onChange={(e) => onChange(e.target.checked ? allIds : [])}
+        />
+        Todas
+      </label>
+      {all.map((s) => (
+        <label key={s.id} className="flex items-center gap-1.5 text-sm">
+          <input type="checkbox" checked={value.includes(s.id)} onChange={() => toggle(s.id)} />
+          {s.nombre}
+        </label>
+      ))}
+    </div>
+  );
 }
-// Deriva la opción del selector desde las sedes asignadas de un usuario.
-function scopeValue(ids: string[] | undefined, total: number): string {
-  const n = ids?.length ?? 0;
-  if (n === 0) return "";
-  if (total > 0 && n >= total) return "all";
-  return ids![0];
+
+// Matriz de permisos recurso × acción.
+function PermisosMatrix({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (perms: string[]) => void;
+}) {
+  const has = (k: string) => value.includes(k);
+  const toggle = (k: string) => onChange(has(k) ? value.filter((x) => x !== k) : [...value, k]);
+  return (
+    <div className="space-y-0.5">
+      {(Object.keys(RESOURCES) as Resource[]).map((res) => (
+        <div key={res} className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b py-1.5">
+          <span className="w-40 text-sm font-medium">{RESOURCE_LABELS[res]}</span>
+          {RESOURCES[res].map((action) => {
+            const k = `${res}:${action}`;
+            return (
+              <label key={k} className="flex items-center gap-1.5 text-xs">
+                <input type="checkbox" checked={has(k)} onChange={() => toggle(k)} />
+                {ACTION_LABELS[action]}
+              </label>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function UsuariosTab() {
@@ -872,8 +929,15 @@ function UsuariosTab() {
   const [role, setRole] = useState<
     "admin" | "administrativo" | "direccion" | "odontologo" | "recepcionista"
   >("administrativo");
-  // "all" = todas las sedes; un id = solo esa sede.
-  const [sucursalSel, setSucursalSel] = useState<string>("all");
+  // Sedes elegidas para el alta (vacío = todas al crear).
+  const [sucursalIds, setSucursalIds] = useState<string[]>([]);
+  // Editor de accesos por usuario (fila expandida): sedes + matriz de permisos.
+  const [editUser, setEditUser] = useState<string | null>(null);
+  const [editSucs, setEditSucs] = useState<string[]>([]);
+  const [editPerms, setEditPerms] = useState<string[]>([]);
+  const [editRole, setEditRole] = useState<string>("administrativo");
+
+  const allSucIds = (sucursales ?? []).map((s: any) => s.id);
 
   const createM = useMutation({
     mutationFn: () =>
@@ -883,7 +947,7 @@ function UsuariosTab() {
           password,
           nombre,
           role,
-          sucursal_ids: scopeToIds(sucursalSel, sucursales ?? []),
+          sucursal_ids: sucursalIds.length ? sucursalIds : allSucIds,
         },
       }),
     onSuccess: () => {
@@ -892,11 +956,29 @@ function UsuariosTab() {
       setNombre("");
       setPassword("");
       setRole("administrativo");
-      setSucursalSel("all");
+      setSucursalIds([]);
       qc.invalidateQueries({ queryKey: ["gestion-users"] });
     },
     onError: (e: any) => toast.error(e.message),
   });
+
+  // Abre el editor de accesos de un usuario, precargando sedes/permisos/rol actuales.
+  const openEditor = (u: any) => {
+    setEditUser(u.user_id);
+    setEditSucs(u.sucursal_ids ?? []);
+    setEditRole(u.roles[0] ?? "administrativo");
+    // Si no tiene permisos cargados, precargar el preset de su rol como punto de partida.
+    setEditPerms(
+      u.permissions?.length ? u.permissions : presetForRole((u.roles[0] ?? "administrativo") as any),
+    );
+  };
+  const saveEditor = () => {
+    if (!editUser) return;
+    updateM.mutate(
+      { user_id: editUser, sucursal_ids: editSucs.length ? editSucs : allSucIds, permissions: editPerms },
+      { onSuccess: () => setEditUser(null) },
+    );
+  };
 
   const updateM = useMutation({
     mutationFn: (vars: {
@@ -904,6 +986,7 @@ function UsuariosTab() {
       role?: any;
       sucursal_ids?: string[];
       new_password?: string;
+      permissions?: string[];
     }) => updateGestionUser({ data: vars as any }),
     onSuccess: () => {
       toast.success("Actualizado");
@@ -959,22 +1042,14 @@ function UsuariosTab() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label>Sucursal</Label>
-              <Select value={sucursalSel} onValueChange={setSucursalSel}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Elegir…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(sucursales ?? []).map((s: any) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.nombre}
-                    </SelectItem>
-                  ))}
-                  {(sucursales?.length ?? 0) > 1 && <SelectItem value="all">Ambas</SelectItem>}
-                </SelectContent>
-              </Select>
-            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Sucursales (si no elegís ninguna, se asignan todas)</Label>
+            <SucursalesChecklist
+              all={sucursales ?? []}
+              value={sucursalIds}
+              onChange={setSucursalIds}
+            />
           </div>
           <div className="flex justify-end">
             <Button
@@ -1008,74 +1083,101 @@ function UsuariosTab() {
                 </TableRow>
               )}
               {(users ?? []).map((u: any) => (
-                <TableRow key={u.user_id}>
-                  <TableCell className="font-medium">{u.nombre || "—"}</TableCell>
-                  <TableCell className="text-sm">{u.email}</TableCell>
-                  <TableCell>
-                    <Select
-                      value={u.roles[0] ?? "administrativo"}
-                      onValueChange={(v) => updateM.mutate({ user_id: u.user_id, role: v })}
-                    >
-                      <SelectTrigger className="w-40">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="direccion">Dirección</SelectItem>
-                        <SelectItem value="administrativo">Administrativo</SelectItem>
-                        <SelectItem value="odontologo">Odontólogo</SelectItem>
-                        <SelectItem value="recepcionista">Recepcionista</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={scopeValue(u.sucursal_ids, sucursales?.length ?? 0)}
-                      onValueChange={(v) =>
-                        updateM.mutate({
-                          user_id: u.user_id,
-                          sucursal_ids: scopeToIds(v, sucursales ?? []),
-                        })
-                      }
-                    >
-                      <SelectTrigger className="w-44">
-                        <SelectValue placeholder="—" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(sucursales ?? []).map((s: any) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.nombre}
-                          </SelectItem>
-                        ))}
-                        {(sucursales?.length ?? 0) > 1 && (
-                          <SelectItem value="all">Ambas</SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell className="text-right space-x-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        const np = window.prompt("Nueva contraseña (mín. 6)");
-                        if (np && np.length >= 6)
-                          updateM.mutate({ user_id: u.user_id, new_password: np });
-                      }}
-                    >
-                      Resetear pass
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() =>
-                        confirm(`¿Eliminar a ${u.email}?`) && removeM.mutate(u.user_id)
-                      }
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
+                <Fragment key={u.user_id}>
+                  <TableRow>
+                    <TableCell className="font-medium">{u.nombre || "—"}</TableCell>
+                    <TableCell className="text-sm">{u.email}</TableCell>
+                    <TableCell>
+                      <Select
+                        value={u.roles[0] ?? "administrativo"}
+                        onValueChange={(v) => updateM.mutate({ user_id: u.user_id, role: v })}
+                      >
+                        <SelectTrigger className="w-40">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="direccion">Dirección</SelectItem>
+                          <SelectItem value="administrativo">Administrativo</SelectItem>
+                          <SelectItem value="odontologo">Odontólogo</SelectItem>
+                          <SelectItem value="recepcionista">Recepcionista</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {(sucursales?.length ?? 0) > 0 &&
+                      u.sucursal_ids?.length === sucursales?.length
+                        ? "Todas"
+                        : (u.sucursales ?? []).map((s: any) => s.nombre).join(", ") || "—"}
+                    </TableCell>
+                    <TableCell className="text-right space-x-1 whitespace-nowrap">
+                      <Button
+                        size="sm"
+                        variant={editUser === u.user_id ? "default" : "outline"}
+                        onClick={() => (editUser === u.user_id ? setEditUser(null) : openEditor(u))}
+                      >
+                        Accesos
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const np = window.prompt("Nueva contraseña (mín. 6)");
+                          if (np && np.length >= 6)
+                            updateM.mutate({ user_id: u.user_id, new_password: np });
+                        }}
+                      >
+                        Resetear pass
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() =>
+                          confirm(`¿Eliminar a ${u.email}?`) && removeM.mutate(u.user_id)
+                        }
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                  {editUser === u.user_id && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="bg-muted/30">
+                        <div className="space-y-4 p-2">
+                          <div>
+                            <div className="text-sm font-semibold mb-1.5">Sucursales con acceso</div>
+                            <SucursalesChecklist
+                              all={sucursales ?? []}
+                              value={editSucs}
+                              onChange={setEditSucs}
+                            />
+                          </div>
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <div className="text-sm font-semibold">Permisos por sección</div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setEditPerms(presetForRole(editRole as any))}
+                              >
+                                Aplicar preset del rol
+                              </Button>
+                            </div>
+                            <PermisosMatrix value={editPerms} onChange={setEditPerms} />
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <Button variant="ghost" onClick={() => setEditUser(null)}>
+                              Cancelar
+                            </Button>
+                            <Button onClick={saveEditor} disabled={updateM.isPending}>
+                              Guardar accesos
+                            </Button>
+                          </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </Fragment>
               ))}
               {!isLoading && (users ?? []).length === 0 && (
                 <TableRow>

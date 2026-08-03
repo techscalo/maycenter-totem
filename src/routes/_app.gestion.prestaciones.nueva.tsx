@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { PermissionGate } from "@/components/gestion/PermissionGate";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +27,11 @@ export const Route = createFileRoute("/_app/gestion/prestaciones/nueva")({
     dni: s.dni != null && s.dni !== "" ? String(s.dni) : undefined,
     nombre: typeof s.nombre === "string" && s.nombre ? s.nombre : undefined,
   }),
-  component: NuevaPrestacion,
+  component: () => (
+    <PermissionGate resource="prestaciones" action="create">
+      <NuevaPrestacion />
+    </PermissionGate>
+  ),
 });
 
 function todayISO() {
@@ -421,8 +426,12 @@ function NuevaPrestacion() {
                     <Input
                       type="number"
                       min={1}
-                      value={it.cantidad}
-                      onChange={(e) => patchItem(it.key, { cantidad: Number(e.target.value) || 1 })}
+                      value={it.cantidad === 0 ? "" : it.cantidad}
+                      onChange={(e) =>
+                        patchItem(it.key, {
+                          cantidad: e.target.value === "" ? 0 : Number(e.target.value),
+                        })
+                      }
                     />
                   </div>
                   <div className="md:col-span-2">
@@ -494,8 +503,12 @@ function NuevaPrestacion() {
                     <Input
                       type="number"
                       min={1}
-                      value={it.cantidad}
-                      onChange={(e) => patchItem(it.key, { cantidad: Number(e.target.value) || 1 })}
+                      value={it.cantidad === 0 ? "" : it.cantidad}
+                      onChange={(e) =>
+                        patchItem(it.key, {
+                          cantidad: e.target.value === "" ? 0 : Number(e.target.value),
+                        })
+                      }
                     />
                   </div>
                   <div className="md:col-span-3">
@@ -504,8 +517,12 @@ function NuevaPrestacion() {
                       type="number"
                       min={0}
                       step="0.01"
-                      value={it.monto}
-                      onChange={(e) => patchItem(it.key, { monto: Number(e.target.value) || 0 })}
+                      value={it.monto === 0 ? "" : it.monto}
+                      onChange={(e) =>
+                        patchItem(it.key, {
+                          monto: e.target.value === "" ? 0 : Number(e.target.value),
+                        })
+                      }
                     />
                   </div>
                   {!it.nomencladorId && (

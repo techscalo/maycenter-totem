@@ -21,8 +21,14 @@ import {
   deleteNomenclador,
 } from "@/lib/gestion/data.server";
 
+import { PermissionGate } from "@/components/gestion/PermissionGate";
+
 export const Route = createFileRoute("/_app/gestion/precios")({
-  component: PreciosPage,
+  component: () => (
+    <PermissionGate resource="precios">
+      <PreciosPage />
+    </PermissionGate>
+  ),
 });
 
 type SortKey = "plan" | "codigo" | "descripcion" | "monto";

@@ -14,6 +14,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as GestionLoginRouteImport } from './routes/gestion.login'
 import { Route as AppGestionIndexRouteImport } from './routes/_app.gestion.index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api.auth.$'
+import { Route as AppGestionRegistroRouteImport } from './routes/_app.gestion.registro'
 import { Route as AppGestionRecepcionRouteImport } from './routes/_app.gestion.recepcion'
 import { Route as AppGestionPreciosRouteImport } from './routes/_app.gestion.precios'
 import { Route as AppGestionOdontologosRouteImport } from './routes/_app.gestion.odontologos'
@@ -50,6 +51,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppGestionRegistroRoute = AppGestionRegistroRouteImport.update({
+  id: '/gestion/registro',
+  path: '/gestion/registro',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppGestionRecepcionRoute = AppGestionRecepcionRouteImport.update({
   id: '/gestion/recepcion',
@@ -125,6 +131,7 @@ export interface FileRoutesByFullPath {
   '/gestion/odontologos': typeof AppGestionOdontologosRoute
   '/gestion/precios': typeof AppGestionPreciosRoute
   '/gestion/recepcion': typeof AppGestionRecepcionRoute
+  '/gestion/registro': typeof AppGestionRegistroRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/gestion/': typeof AppGestionIndexRoute
   '/gestion/pacientes/$dni': typeof AppGestionPacientesDniRoute
@@ -143,6 +150,7 @@ export interface FileRoutesByTo {
   '/gestion/odontologos': typeof AppGestionOdontologosRoute
   '/gestion/precios': typeof AppGestionPreciosRoute
   '/gestion/recepcion': typeof AppGestionRecepcionRoute
+  '/gestion/registro': typeof AppGestionRegistroRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/gestion': typeof AppGestionIndexRoute
   '/gestion/pacientes/$dni': typeof AppGestionPacientesDniRoute
@@ -163,6 +171,7 @@ export interface FileRoutesById {
   '/_app/gestion/odontologos': typeof AppGestionOdontologosRoute
   '/_app/gestion/precios': typeof AppGestionPreciosRoute
   '/_app/gestion/recepcion': typeof AppGestionRecepcionRoute
+  '/_app/gestion/registro': typeof AppGestionRegistroRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_app/gestion/': typeof AppGestionIndexRoute
   '/_app/gestion/pacientes/$dni': typeof AppGestionPacientesDniRoute
@@ -183,6 +192,7 @@ export interface FileRouteTypes {
     | '/gestion/odontologos'
     | '/gestion/precios'
     | '/gestion/recepcion'
+    | '/gestion/registro'
     | '/api/auth/$'
     | '/gestion/'
     | '/gestion/pacientes/$dni'
@@ -201,6 +211,7 @@ export interface FileRouteTypes {
     | '/gestion/odontologos'
     | '/gestion/precios'
     | '/gestion/recepcion'
+    | '/gestion/registro'
     | '/api/auth/$'
     | '/gestion'
     | '/gestion/pacientes/$dni'
@@ -220,6 +231,7 @@ export interface FileRouteTypes {
     | '/_app/gestion/odontologos'
     | '/_app/gestion/precios'
     | '/_app/gestion/recepcion'
+    | '/_app/gestion/registro'
     | '/api/auth/$'
     | '/_app/gestion/'
     | '/_app/gestion/pacientes/$dni'
@@ -273,6 +285,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/gestion/registro': {
+      id: '/_app/gestion/registro'
+      path: '/gestion/registro'
+      fullPath: '/gestion/registro'
+      preLoaderRoute: typeof AppGestionRegistroRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/gestion/recepcion': {
       id: '/_app/gestion/recepcion'
@@ -368,6 +387,7 @@ interface AppRouteChildren {
   AppGestionOdontologosRoute: typeof AppGestionOdontologosRoute
   AppGestionPreciosRoute: typeof AppGestionPreciosRoute
   AppGestionRecepcionRoute: typeof AppGestionRecepcionRoute
+  AppGestionRegistroRoute: typeof AppGestionRegistroRoute
   AppGestionIndexRoute: typeof AppGestionIndexRoute
   AppGestionPacientesDniRoute: typeof AppGestionPacientesDniRoute
   AppGestionPrestacionesNuevaRoute: typeof AppGestionPrestacionesNuevaRoute
@@ -384,6 +404,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppGestionOdontologosRoute: AppGestionOdontologosRoute,
   AppGestionPreciosRoute: AppGestionPreciosRoute,
   AppGestionRecepcionRoute: AppGestionRecepcionRoute,
+  AppGestionRegistroRoute: AppGestionRegistroRoute,
   AppGestionIndexRoute: AppGestionIndexRoute,
   AppGestionPacientesDniRoute: AppGestionPacientesDniRoute,
   AppGestionPrestacionesNuevaRoute: AppGestionPrestacionesNuevaRoute,

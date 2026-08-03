@@ -16,8 +16,14 @@ import {
 } from "@/components/ui/table";
 import { Search, ChevronRight } from "lucide-react";
 
+import { PermissionGate } from "@/components/gestion/PermissionGate";
+
 export const Route = createFileRoute("/_app/gestion/pacientes/")({
-  component: PacientesList,
+  component: () => (
+    <PermissionGate resource="pacientes">
+      <PacientesList />
+    </PermissionGate>
+  ),
 });
 
 function PacientesList() {
