@@ -285,8 +285,15 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
         ),
       );
     const llegadaPorDni = new Map(llegadas.map((l) => [onlyDigits(l.dni), l]));
+    // Formatear SIEMPRE en hora de Argentina: en prod el servidor corre en UTC y sin
+    // timeZone se mostrarían las horas +3 (turno GHL 11:00 → 14:00). Ver gotcha zona horaria.
     const hhmm = (d: Date) =>
-      d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
+      d.toLocaleTimeString("es-AR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: "America/Argentina/Buenos_Aires",
+      });
 
     const turnos = eventos
       .map((e) => {
