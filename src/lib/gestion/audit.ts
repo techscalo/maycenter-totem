@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { auditLog, profiles } from "@/db/schema";
 
-export type AuditAction = "create" | "update" | "delete";
+export type AuditAction = "create" | "update" | "delete" | "login";
 
 type LogInput = {
   action: AuditAction;

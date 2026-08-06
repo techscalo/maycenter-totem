@@ -13,7 +13,7 @@ export const listAuditLog = createServerFn({ method: "GET" })
       .object({
         actorUserId: z.string().optional(),
         resource: z.string().optional(),
-        action: z.enum(["create", "update", "delete"]).optional(),
+        action: z.enum(["create", "update", "delete", "login"]).optional(),
         desde: z.string().optional(),
         hasta: z.string().optional(),
         limit: z.number().int().positive().max(500).optional(),

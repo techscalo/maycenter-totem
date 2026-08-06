@@ -22,13 +22,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, LogIn } from "lucide-react";
 
 export const Route = createFileRoute("/_app/gestion/registro")({
   component: RegistroPage,
 });
 
 const RESOURCES = [
+  ["sesion", "Inicios de sesión"],
   ["prestacion", "Prestaciones"],
   ["precio", "Precios"],
   ["usuario", "Usuarios"],
@@ -40,6 +41,7 @@ const RESOURCES = [
 ] as const;
 
 const ACCION_META: Record<string, { label: string; icon: typeof Plus; cls: string }> = {
+  login: { label: "Ingreso", icon: LogIn, cls: "text-sky-500" },
   create: { label: "Alta", icon: Plus, cls: "text-success" },
   update: { label: "Edición", icon: Pencil, cls: "text-muted-foreground" },
   delete: { label: "Baja", icon: Trash2, cls: "text-destructive" },
@@ -69,7 +71,7 @@ function RegistroPage() {
         data: {
           actorUserId: actor === TODOS ? undefined : actor,
           resource: resource === TODOS ? undefined : resource,
-          action: accion === TODOS ? undefined : (accion as "create" | "update" | "delete"),
+          action: accion === TODOS ? undefined : (accion as "create" | "update" | "delete" | "login"),
           desde: desde ? new Date(`${desde}T00:00:00-03:00`).toISOString() : undefined,
           hasta: hasta ? new Date(`${hasta}T23:59:59-03:00`).toISOString() : undefined,
           limit,
@@ -131,6 +133,7 @@ function RegistroPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={TODOS}>Todas</SelectItem>
+                <SelectItem value="login">Ingresos</SelectItem>
                 <SelectItem value="create">Altas</SelectItem>
                 <SelectItem value="update">Ediciones</SelectItem>
                 <SelectItem value="delete">Bajas</SelectItem>
