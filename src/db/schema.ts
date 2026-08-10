@@ -269,10 +269,49 @@ export const turnoAsistencias = pgTable("turno_asistencias", {
   asistio: boolean("asistio").notNull().default(true),
   // Flujo del turno: en_recepcion | en_consultorio | finalizado | ausente (null = sin marcar).
   estado: text("estado"),
+  // Hora de ingreso a la sala de atención (se setea al marcar "En sala" / en_consultorio, una vez).
+  // Distinta del ingreso a la clínica (arrivals.created_at del tótem).
+  salaAt: timestamp("sala_at", { withTimezone: true }),
   marcadoPor: text("marcado_por"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// Turnos cargados a mano en el sistema, sin vínculo con GHL. Se listan junto a los de GHL
+// en "Turnos del día". Mismo flujo de estado (en_recepcion/en_consultorio/finalizado/ausente).
+export const turnosManuales = pgTable(
+  "turnos_manuales",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sucursalId: uuid("sucursal_id")
+      .notNull()
+      .references(() => sucursales.id, { onDelete: "cascade" }),
+    fecha: date("fecha").notNull(),
+    hora: text("hora").notNull(), // "HH:MM"
+    pacienteNombre: text("paciente_nombre").notNull(),
+    dni: text("dni").notNull(),
+    telefono: text("telefono"),
+    obraSocialId: uuid("obra_social_id").references(() => obrasSociales.id, {
+      onDelete: "set null",
+    }),
+    odontologoId: uuid("odontologo_id").references(() => odontologos.id, {
+      onDelete: "set null",
+    }),
+    motivo: text("motivo"),
+    estado: text("estado"),
+    // Ingreso a la clínica y a la sala. Como el manual no pasa por el tótem, se estampan
+    // al marcar "En recepción" / "En sala" respectivamente (una vez, no se pisan).
+    llegadaAt: timestamp("llegada_at", { withTimezone: true }),
+    salaAt: timestamp("sala_at", { withTimezone: true }),
+    marcadoPor: text("marcado_por"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    turnosManualesFechaIdx: index("idx_turnos_manuales_fecha").on(t.sucursalId, t.fecha),
+  }),
+);
 
 // Registro de cambios ("buchón"): una fila por alta/edición/baja de una entidad de negocio.
 // actor_nombre es snapshot (no se pierde si el usuario se borra). meta = detalle libre.

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createArrival, getSucursalesTotem } from "@/lib/gestion/data.server";
+import { isValidDni, normalizeDni } from "@/lib/dni";
 import {
   CheckCircle2,
   CalendarCheck2,
@@ -310,9 +311,9 @@ function KioskFlow({ clinica, piso }: { clinica: string; piso: string | null }) 
     const onSubmit = async () => {
       const e: typeof errors = {};
       if (!nombre.trim()) e.nombre = "Ingresá tu nombre y apellido.";
-      const dniClean = dni.replace(/\D/g, "");
+      const dniClean = normalizeDni(dni);
       if (!dniClean) e.dni = "El DNI es obligatorio.";
-      else if (dniClean.length < 6) e.dni = "El DNI parece muy corto.";
+      else if (!isValidDni(dniClean)) e.dni = "El DNI debe tener entre 6 y 9 dígitos.";
       setErrors(e);
       if (Object.keys(e).length) return;
 

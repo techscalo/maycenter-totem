@@ -20,6 +20,7 @@ import {
   getPacienteByDni,
 } from "@/lib/gestion/data.server";
 import { esPlacaMio } from "@/lib/gestion/codigos";
+import { isValidDni, DNI_ERROR } from "@/lib/dni";
 
 export const Route = createFileRoute("/_app/gestion/prestaciones/nueva")({
   // Prefill opcional desde Recepción (?dni=...&nombre=...).
@@ -194,7 +195,7 @@ function NuevaPrestacion() {
   const saveMut = useMutation({
     mutationFn: async () => {
       if (!header.paciente.trim()) throw new Error("Ingresá el nombre del paciente");
-      if (!header.dni.trim()) throw new Error("Ingresá el DNI");
+      if (!isValidDni(header.dni)) throw new Error(DNI_ERROR);
       if (!header.sucursal_id) throw new Error("Elegí sucursal");
       if (!header.obra_social_id) throw new Error("Elegí obra social");
       if (!header.odontologo_id) throw new Error("Elegí odontólogo");
@@ -283,6 +284,9 @@ function NuevaPrestacion() {
                 onChange={(e) => setHeader({ ...header, dni: e.target.value.replace(/\D/g, "") })}
                 onBlur={onDniBlur}
               />
+              {header.dni && !isValidDni(header.dni) && (
+                <p className="text-[11px] text-destructive mt-1">{DNI_ERROR}</p>
+              )}
             </div>
             <div>
               <Label>Código de consulta</Label>

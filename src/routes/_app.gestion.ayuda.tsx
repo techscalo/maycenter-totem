@@ -38,6 +38,7 @@ const SECCIONES: Sec[] = [
       "Confirma. Queda registrada la llegada y el paciente espera a ser llamado.",
     ],
     notas: [
+      "El DNI es obligatorio y debe tener entre 6 y 9 dígitos (sin puntos).",
       "No se borran solos: las llegadas viejas se archivan desde Recepción.",
       "Si la tablet se reinicia, basta con volver a abrir la URL del tótem.",
     ],
@@ -49,13 +50,22 @@ const SECCIONES: Sec[] = [
     ruta: "/gestion/recepcion",
     acceso: "Requiere iniciar sesión.",
     resumen:
-      "Panel donde la recepcionista ve las llegadas del tótem y las va gestionando. Se actualiza solo cada ~10 segundos.",
+      "Centro de la recepcionista, con dos solapas: 'Orden de llegada (tótem)', que muestra las llegadas que los pacientes cargan en el tótem; y 'Turnos del día', que muestra los turnos agendados (de GHL) más los turnos cargados a mano.",
     pasos: [
-      "Mirá la lista de pacientes que registraron su llegada (más reciente arriba).",
-      "Cambiá el estado de cada llegada a medida que avanza la atención (esperando → atendido, etc.).",
-      "Usá 'archivar' para limpiar las llegadas viejas del día.",
+      "Solapa 'Orden de llegada': mirá los pacientes que registraron su llegada (más reciente arriba), cambiales el estado a medida que avanza la atención y usá 'archivar' para limpiar las llegadas viejas del día.",
+      "Solapa 'Turnos del día': elegí la fecha y filtrá por agenda, estado o buscador. Cada turno muestra hora, paciente, obra social y agenda.",
+      "Marcá el estado de cada turno con el selector: En recepción → En sala → Finalizado (o Ausente).",
+      "Cuando el paciente pasa al consultorio, marcá 'En sala': queda registrada la hora de ingreso a sala en su columna.",
+      "Para un turno que no está en GHL, tocá 'Agregar turno', completá los datos (DNI obligatorio) y guardá. Aparece en la lista junto a los demás.",
     ],
-    notas: ["Si no ves llegadas nuevas, esperá unos segundos o recargá la página."],
+    notas: [
+      "Dos horas distintas: 'Hora llegada' es cuando el paciente entró a la clínica (check-in del tótem); 'Ingreso a sala' es cuando pasó al box de atención (al marcar 'En sala').",
+      "Si un paciente hizo check-in en el tótem, su turno se marca 'En recepción' automáticamente al cruzarse por DNI.",
+      "Al marcar 'Finalizado' o 'Ausente' se refleja también en GHL (asistió / no asistió). Los estados intermedios no tocan GHL.",
+      "El turno manual no se sincroniza con GHL: vive solo en este sistema. Se puede eliminar con el tacho de su fila.",
+      "El botón 'Columnas' permite mostrar u ocultar columnas (DNI, agendado por, etc.); la preferencia se recuerda.",
+      "Si no ves llegadas nuevas, esperá unos segundos o recargá la página.",
+    ],
   },
   {
     id: "registro",
@@ -100,7 +110,7 @@ const SECCIONES: Sec[] = [
     resumen:
       "Se carga una atención completa: datos del paciente y todas las prestaciones que se le hicieron, en una o varias líneas.",
     pasos: [
-      "Completá fecha, paciente y DNI. Opcional: código de consulta y 'Primera vez' si es paciente nuevo.",
+      "Completá fecha, paciente y DNI (obligatorio, 6 a 9 dígitos sin puntos). Opcional: código de consulta y 'Primera vez' si es paciente nuevo.",
       "Elegí sucursal, piso y odontólogo (los selects se escriben para buscar).",
       "Elegí la obra social. Si la obra social tiene planes (ej. OSDE, Biomed), aparece el selector 'Plan'.",
       "En cada línea elegí el código de prestación: el precio se completa solo según la obra social y el plan.",
