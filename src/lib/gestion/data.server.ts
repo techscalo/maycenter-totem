@@ -21,6 +21,13 @@ import {
   type AuthCtx,
 } from "@/lib/gestion/session.server";
 import { logAudit } from "@/lib/gestion/audit";
+import { isValidDni, normalizeDni } from "@/lib/dni";
+
+// DNI obligatorio + validación de formato (6 a 9 dígitos), compartido por las cargas con paciente.
+const dniField = z
+  .string()
+  .refine((v) => isValidDni(v), "DNI inválido (6 a 9 dígitos)")
+  .transform((v) => normalizeDni(v));
 
 // Resuelve la sucursal de trabajo: valida que la pedida sea una de las asignadas;
 // si no se pide ninguna, usa la primera asignada. Lanza si el usuario no tiene acceso.
@@ -289,7 +296,7 @@ export const createAtencion = createServerFn({ method: "POST" })
       .object({
         fecha: z.string(),
         paciente: z.string().min(1),
-        dni: z.string().min(1),
+        dni: dniField,
         sucursalId: z.string().uuid(),
         obraSocialId: z.string().uuid(),
         pisoId: z.string().uuid().nullable().optional(),
@@ -463,7 +470,7 @@ export const updateAtencionCabecera = createServerFn({ method: "POST" })
       .object({
         atencionId: z.string().uuid(),
         paciente: z.string().min(1).optional(),
-        dni: z.string().min(1).optional(),
+        dni: dniField.optional(),
         observaciones: z.string().nullable().optional(),
         codigoConsulta: z.string().nullable().optional(),
         primeraVez: z.boolean().optional(),
@@ -859,7 +866,7 @@ export const createArrival = createServerFn({ method: "POST" })
         tipoAtencion: z.string().min(1),
         cobertura: z.string().nullable().optional(),
         nombreApellido: z.string().min(1),
-        dni: z.string().min(1),
+        dni: dniField,
         // Origen del tótem: slug de clínica (?clinica=caba) y nombre de piso (?piso=3).
         clinica: z.string().optional(),
         piso: z.string().optional(),

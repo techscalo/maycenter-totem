@@ -220,3 +220,39 @@ Plan: `~/.claude/plans/elegant-finding-toucan.md`.
 ### Pendiente
 - [ ] Aplicar migración `0013` en **`main`** al validar staging.
 - [ ] Verificar en navegador el flujo de estados + reflejo showed/noshow en GHL.
+
+---
+
+# Tanda Recepción (10/08/2026) — 3 features
+
+Decisiones: "En sala" = hora de **ingreso a la sala de atención**, distinta del ingreso a la clínica (tótem). Mapea al estado `en_consultorio`, cuyo label se renombra a **"En sala"**. Turno manual con odontólogo desde la tabla `odontologos`. DNI obligatorio + validación de formato en toda carga con paciente.
+
+## Tarea 1 — Hora de ingreso a sala (campo nuevo) ✅
+- [x] Migración `0014`: `turno_asistencias.sala_at timestamptz` (idempotente). Aplicada + columna verificada en DB.
+- [x] `marcarEstadoTurno`: al marcar `en_consultorio` estampa `sala_at = now()` una sola vez (`coalesce`, no pisa). Verificado con fila de prueba (recepción→sala→finalizado mantiene la hora).
+- [x] `getTurnosDelDia`: expone `salaHora` (TZ Argentina).
+- [x] `TurnosDelDia.tsx`: nueva columna **"Ingreso a sala"** + label `en_consultorio` → "En sala".
+- [x] `tsc --noEmit` limpio.
+- [ ] Verificar en navegador con un turno real (marcar "En sala" y ver la hora en la columna).
+- [ ] Aplicar `0014` en **`main`** al validar (ojo: staging = prod comparten DB, ya impactó prod).
+
+## Tarea 2 — Turno manual (sin GHL) ✅
+- [x] Migración `0015`: tabla `turnos_manuales`. Aplicada + columnas verificadas en DB.
+- [x] Server fns (`ghl.server.ts`): `crearTurnoManual`, `marcarEstadoTurnoManual`, `eliminarTurnoManual` + audit.
+- [x] `getTurnosDelDia` fusiona GHL + manuales (discriminante `tipo: 'ghl'|'manual'`, `rowId`). Trae manuales aunque la sucursal no tenga GHL.
+- [x] UI `TurnosDelDia.tsx`: botón "Agregar turno" + `NuevoTurnoDialog`; odontólogo desde `listOdontologos`, OS desde `listObrasSociales`; autocomplete por DNI; refactor tabla (key por `rowId`, estado por tipo, eliminar para manuales).
+- [x] `tsc` limpio + flujo de estados manual verificado (llegada/sala se estampan una vez).
+- [ ] Verificar en navegador (crear turno, marcar estados, eliminar).
+- [ ] Aplicar `0015` en **`main`** al validar.
+
+## Tarea 3 — DNI obligatorio + formato ✅
+- [x] Helper compartido `src/lib/dni.ts` (`isValidDni`/`normalizeDni`/`DNI_ERROR`, 6–9 dígitos).
+- [x] Aplicado en turno manual (required + formato, cliente + server).
+- [x] Tótem: `createArrival` usa `dniField`; form valida 6–9 dígitos.
+- [x] Prestaciones: `createAtencion` + `updateAtencionCabecera` usan `dniField`; form valida + hint inline.
+- [x] `tsc` limpio.
+- [ ] Verificar en navegador.
+
+## Pendiente operativo (las 3 tareas)
+- [ ] Verificación en navegador (dev server).
+- [ ] Merge `staging` → `main` + aplicar `0014`/`0015` en `main` (recordar: staging = prod comparten DB Neon).
