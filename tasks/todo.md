@@ -254,5 +254,27 @@ Decisiones: "En sala" = hora de **ingreso a la sala de atención**, distinta del
 - [ ] Verificar en navegador.
 
 ## Pendiente operativo (las 3 tareas)
-- [ ] Verificación en navegador (dev server).
-- [ ] Merge `staging` → `main` + aplicar `0014`/`0015` en `main` (recordar: staging = prod comparten DB Neon).
+- [x] Deployado a prod (merge `4c8dd76`) + `0014`/`0015` en la DB compartida.
+
+---
+
+# Tanda Recepción 2 (11/08/2026) — sincronización GHL + observaciones
+
+Decisiones: espejo bidireccional de estados; showed→Finalizado / noshow→Ausente al leer de GHL; observaciones = custom field del contacto (creado también en La Plata).
+
+## Ajuste 1 — Estados escriben a GHL (los 4) ✅
+- [x] `marcarEstadoTurno`: en_recepcion/en_consultorio/finalizado → `showed`; ausente → `noshow` (antes solo los finales). Verificado reversible contra GHL real.
+
+## Ajuste 2 — Espejo GHL → sistema ✅
+- [x] `estadoDesdeGhl`: showed→finalizado, noshow→ausente. Estado efectivo por prioridad: marca local → check-in tótem → estado GHL → sin marcar.
+
+## Ajuste 3 — Columna Observaciones ✅
+- [x] Custom field GHL: CABA `RNgqB0yQSDM1LxeS7IRc`; La Plata creado `iPovCNTHMScBeLHsFAEc` (calle10/diag77).
+- [x] `GhlConfig.obsField` + `resolveContactos` extrae observaciones; expuesto en el turno. Manuales: observaciones = motivo.
+- [x] `TurnosDelDia.tsx`: columna "Observaciones" toggle (oculta por defecto, en el menú Columnas).
+- [x] `tsc` limpio.
+
+### Pendiente
+- [ ] Verificar en navegador (dev 8080): marcar estados y ver reflejo en GHL; columna Observaciones con un contacto que tenga el campo cargado.
+- [ ] Commit + deploy a `main` cuando Dylan valide.
+- [ ] (Opcional) actualizar página de Ayuda con la sync de estados y la columna Observaciones.

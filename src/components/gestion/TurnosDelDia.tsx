@@ -93,6 +93,7 @@ const COLS = [
   { key: "agenda", label: "Agenda" },
   { key: "dni", label: "DNI", hiddenByDefault: true },
   { key: "agendadoPor", label: "Agendado por", hiddenByDefault: true },
+  { key: "observaciones", label: "Observaciones", hiddenByDefault: true },
   { key: "estado", label: "Estado" },
   { key: "ficha", label: "Ficha" },
 ] as const;
@@ -358,6 +359,7 @@ export function TurnosDelDia() {
                   {show("agenda") && <SortHead k="profesional">Agenda</SortHead>}
                   {show("dni") && <SortHead k="dni">DNI</SortHead>}
                   {show("agendadoPor") && <SortHead k="agendadoPor">Agendado por</SortHead>}
+                  {show("observaciones") && <TableHead>Observaciones</TableHead>}
                   {show("estado") && (
                     <SortHead k="estado" className="w-44">
                       Estado
@@ -426,6 +428,17 @@ export function TurnosDelDia() {
                                 {t.origen}
                               </div>
                             </>
+                          )}
+                        </TableCell>
+                      )}
+                      {show("observaciones") && (
+                        <TableCell className="text-sm text-muted-foreground max-w-[220px]">
+                          {t.observaciones ? (
+                            <span className="whitespace-pre-wrap break-words" title={t.observaciones}>
+                              {t.observaciones}
+                            </span>
+                          ) : (
+                            "—"
                           )}
                         </TableCell>
                       )}

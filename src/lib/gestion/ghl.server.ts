@@ -24,6 +24,8 @@ type GhlConfig = {
   pit: string;
   dniField: string;
   osField: string;
+  // Custom field "Observaciones" del contacto (para la columna de la tabla de turnos).
+  obsField: string;
   // Filtros de calendarios (por id). Se aplican sobre la location, DESPUÉS del cache.
   onlyCalendarIds?: string[];
   excludeCalendarIds?: string[];
@@ -42,6 +44,7 @@ const GHL_BY_SLUG: Record<
     pitEnv: string;
     dniField: string;
     osField: string;
+    obsField: string;
     onlyCalendarIds?: string[];
     excludeCalendarIds?: string[];
   }
@@ -51,12 +54,14 @@ const GHL_BY_SLUG: Record<
     pitEnv: "GHL_CABA_PIT",
     dniField: "rjdIgjhi3iPZFpRVDP7h",
     osField: "J1dLEUewkTaqVthYDOak",
+    obsField: "RNgqB0yQSDM1LxeS7IRc",
   },
   calle10: {
     locEnv: "GHL_LAPLATA_LOCATION_ID",
     pitEnv: "GHL_LAPLATA_PIT",
     dniField: "KoiPTwrSvVz8ud5LKzBN",
     osField: "VoybEaSZn3agkMBk1MRU",
+    obsField: "iPovCNTHMScBeLHsFAEc",
     excludeCalendarIds: [EDIFICIO_B_DIAG77],
   },
   diag77: {
@@ -64,6 +69,7 @@ const GHL_BY_SLUG: Record<
     pitEnv: "GHL_LAPLATA_PIT",
     dniField: "KoiPTwrSvVz8ud5LKzBN",
     osField: "VoybEaSZn3agkMBk1MRU",
+    obsField: "iPovCNTHMScBeLHsFAEc",
     onlyCalendarIds: [EDIFICIO_B_DIAG77],
   },
 };
@@ -80,6 +86,7 @@ function ghlConfigForSlug(slug: string | null): GhlConfig | null {
       pit,
       dniField: entry.dniField,
       osField: entry.osField,
+      obsField: entry.obsField,
       onlyCalendarIds: entry.onlyCalendarIds,
       excludeCalendarIds: entry.excludeCalendarIds,
     };
@@ -127,6 +134,15 @@ async function updateAppointmentStatus(cfg: GhlConfig, eventId: string, status: 
 }
 
 const onlyDigits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
+
+// Espejo GHL → sistema: si la cita ya viene marcada en GHL, reflejarlo.
+// showed (asistió) → finalizado; noshow (no asistió) → ausente; el resto no mapea.
+function estadoDesdeGhl(appointmentStatus: string | null | undefined): string | null {
+  const s = (appointmentStatus ?? "").toLowerCase();
+  if (s === "showed") return "finalizado";
+  if (s === "noshow") return "ausente";
+  return null;
+}
 
 // Cómo llegó el turno (createdBy.source de GHL) en lenguaje claro.
 function origenLabel(source: string | null | undefined): string {
@@ -199,6 +215,7 @@ async function resolveContactos(cfg: GhlConfig, ids: string[]) {
         const nombre = c.contactName || [c.firstName, c.lastName].filter(Boolean).join(" ") || "—";
         const dniField = (c.customFields ?? []).find((f: any) => f.id === cfg.dniField);
         const osField = (c.customFields ?? []).find((f: any) => f.id === cfg.osField);
+        const obsField = (c.customFields ?? []).find((f: any) => f.id === cfg.obsField);
         return [
           id,
           {
@@ -206,10 +223,14 @@ async function resolveContactos(cfg: GhlConfig, ids: string[]) {
             telefono: c.phone ?? null,
             dni: dniField?.value ?? null,
             obraSocial: osField?.value ?? null,
+            observaciones: obsField?.value ?? null,
           },
         ] as const;
       } catch {
-        return [id, { nombre: "—", telefono: null, dni: null, obraSocial: null }] as const;
+        return [
+          id,
+          { nombre: "—", telefono: null, dni: null, obraSocial: null, observaciones: null },
+        ] as const;
       }
     }),
   );
@@ -283,6 +304,7 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
     dni: m.dni,
     telefono: m.telefono,
     obraSocial: m.obraSocial,
+    observaciones: m.motivo,
     profesional: m.profesional ?? "—",
     motivo: m.motivo,
     estadoGhl: null as string | null,
@@ -371,8 +393,11 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
         const hora = hhmmAR(new Date(e.startTime));
         const llegada = dni ? (llegadaPorDni.get(onlyDigits(dni)) ?? null) : null;
         const ingresoTotem = llegada !== null;
-        // Estado efectivo: el marcado local o, si hizo check-in en el tótem, "en_recepcion".
-        const estado = estadoMap.get(e.eventId) ?? (ingresoTotem ? "en_recepcion" : null);
+        // Estado efectivo, por prioridad: marca local del sistema → check-in del tótem
+        // ("en_recepcion") → espejo del estado de GHL (showed/noshow) → sin marcar.
+        const estado =
+          estadoMap.get(e.eventId) ??
+          (ingresoTotem ? "en_recepcion" : estadoDesdeGhl(e.estadoGhl));
         const salaAt = salaMap.get(e.eventId) ?? null;
         return {
           tipo: "ghl" as const,
@@ -385,6 +410,7 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
           dni,
           telefono: c?.telefono ?? null,
           obraSocial: c?.obraSocial ?? null,
+          observaciones: c?.observaciones ?? null,
           profesional: e.profesional,
           motivo: e.title,
           estadoGhl: e.estadoGhl,
@@ -475,19 +501,17 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
     if (!ctx.sucursalIds.includes(data.sucursalId)) {
       throw new Error("No tenés acceso a esa sucursal");
     }
-    // Reflejar asistencia en GHL solo en los estados finales: finalizado → showed,
-    // ausente → noshow. Los intermedios (recepción/consultorio) no tocan GHL.
-    const ghlStatus =
-      data.estado === "finalizado" ? "showed" : data.estado === "ausente" ? "noshow" : null;
-    if (ghlStatus) {
-      const [suc] = await db
-        .select({ slug: sucursales.slug })
-        .from(sucursales)
-        .where(eq(sucursales.id, data.sucursalId))
-        .limit(1);
-      const cfg = ghlConfigForSlug(suc?.slug ?? null);
-      if (cfg) await updateAppointmentStatus(cfg, data.eventId, ghlStatus);
-    }
+    // Espejo hacia GHL: cualquier estado de asistencia (en recepción / en sala / finalizado)
+    // marca la cita como "showed" (asistió); "ausente" la marca "noshow". Así el estado del
+    // sistema y el de GHL quedan siempre reflejados.
+    const ghlStatus = data.estado === "ausente" ? "noshow" : "showed";
+    const [suc] = await db
+      .select({ slug: sucursales.slug })
+      .from(sucursales)
+      .where(eq(sucursales.id, data.sucursalId))
+      .limit(1);
+    const cfg = ghlConfigForSlug(suc?.slug ?? null);
+    if (cfg) await updateAppointmentStatus(cfg, data.eventId, ghlStatus);
     // Hora de ingreso a sala: se estampa al marcar "En sala" (en_consultorio) y no se pisa
     // en marcas posteriores (coalesce mantiene la primera).
     const salaAhora = data.estado === "en_consultorio" ? new Date() : null;
