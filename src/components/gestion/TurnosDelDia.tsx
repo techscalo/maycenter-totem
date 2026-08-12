@@ -94,9 +94,9 @@ const COLS = [
   { key: "dni", label: "DNI", hiddenByDefault: true },
   { key: "agendadoPor", label: "Agendado por", hiddenByDefault: true },
   { key: "observaciones", label: "Observaciones", hiddenByDefault: true },
-  { key: "tieneFicha", label: "Ficha (estado)" },
+  { key: "tieneFicha", label: "Ficha" },
   { key: "estado", label: "Estado" },
-  { key: "ficha", label: "Ficha" },
+  { key: "ficha", label: "Ficha GHL" },
 ] as const;
 const COLS_STORAGE = "turnos_cols_v1";
 
@@ -367,7 +367,7 @@ export function TurnosDelDia() {
                       Estado
                     </SortHead>
                   )}
-                  {show("ficha") && <TableHead className="text-center">Ficha</TableHead>}
+                  {show("ficha") && <TableHead className="text-center">Ficha GHL</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
