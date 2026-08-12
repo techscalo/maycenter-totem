@@ -26,6 +26,8 @@ type GhlConfig = {
   osField: string;
   // Custom field "Observaciones" del contacto (para la columna de la tabla de turnos).
   obsField: string;
+  // Custom field "Ficha" del contacto (Tiene ficha / No tiene ficha).
+  fichaField: string;
   // Filtros de calendarios (por id). Se aplican sobre la location, DESPUÉS del cache.
   onlyCalendarIds?: string[];
   excludeCalendarIds?: string[];
@@ -45,6 +47,7 @@ const GHL_BY_SLUG: Record<
     dniField: string;
     osField: string;
     obsField: string;
+    fichaField: string;
     onlyCalendarIds?: string[];
     excludeCalendarIds?: string[];
   }
@@ -55,6 +58,7 @@ const GHL_BY_SLUG: Record<
     dniField: "rjdIgjhi3iPZFpRVDP7h",
     osField: "J1dLEUewkTaqVthYDOak",
     obsField: "RNgqB0yQSDM1LxeS7IRc",
+    fichaField: "SP1rAdxTjKwrVa9Tougf",
   },
   calle10: {
     locEnv: "GHL_LAPLATA_LOCATION_ID",
@@ -62,6 +66,7 @@ const GHL_BY_SLUG: Record<
     dniField: "KoiPTwrSvVz8ud5LKzBN",
     osField: "VoybEaSZn3agkMBk1MRU",
     obsField: "iPovCNTHMScBeLHsFAEc",
+    fichaField: "jiuTQYHKyxQCheXjdq2t",
     excludeCalendarIds: [EDIFICIO_B_DIAG77],
   },
   diag77: {
@@ -70,6 +75,7 @@ const GHL_BY_SLUG: Record<
     dniField: "KoiPTwrSvVz8ud5LKzBN",
     osField: "VoybEaSZn3agkMBk1MRU",
     obsField: "iPovCNTHMScBeLHsFAEc",
+    fichaField: "jiuTQYHKyxQCheXjdq2t",
     onlyCalendarIds: [EDIFICIO_B_DIAG77],
   },
 };
@@ -87,6 +93,7 @@ function ghlConfigForSlug(slug: string | null): GhlConfig | null {
       dniField: entry.dniField,
       osField: entry.osField,
       obsField: entry.obsField,
+      fichaField: entry.fichaField,
       onlyCalendarIds: entry.onlyCalendarIds,
       excludeCalendarIds: entry.excludeCalendarIds,
     };
@@ -216,6 +223,7 @@ async function resolveContactos(cfg: GhlConfig, ids: string[]) {
         const dniField = (c.customFields ?? []).find((f: any) => f.id === cfg.dniField);
         const osField = (c.customFields ?? []).find((f: any) => f.id === cfg.osField);
         const obsField = (c.customFields ?? []).find((f: any) => f.id === cfg.obsField);
+        const fichaField = (c.customFields ?? []).find((f: any) => f.id === cfg.fichaField);
         return [
           id,
           {
@@ -224,12 +232,20 @@ async function resolveContactos(cfg: GhlConfig, ids: string[]) {
             dni: dniField?.value ?? null,
             obraSocial: osField?.value ?? null,
             observaciones: obsField?.value ?? null,
+            ficha: fichaField?.value ?? null,
           },
         ] as const;
       } catch {
         return [
           id,
-          { nombre: "—", telefono: null, dni: null, obraSocial: null, observaciones: null },
+          {
+            nombre: "—",
+            telefono: null,
+            dni: null,
+            obraSocial: null,
+            observaciones: null,
+            ficha: null,
+          },
         ] as const;
       }
     }),
@@ -305,6 +321,7 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
     telefono: m.telefono,
     obraSocial: m.obraSocial,
     observaciones: m.motivo,
+    ficha: null as string | null,
     profesional: m.profesional ?? "—",
     motivo: m.motivo,
     estadoGhl: null as string | null,
@@ -411,6 +428,7 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
           telefono: c?.telefono ?? null,
           obraSocial: c?.obraSocial ?? null,
           observaciones: c?.observaciones ?? null,
+          ficha: c?.ficha ?? null,
           profesional: e.profesional,
           motivo: e.title,
           estadoGhl: e.estadoGhl,

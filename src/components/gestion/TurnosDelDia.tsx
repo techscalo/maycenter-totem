@@ -94,6 +94,7 @@ const COLS = [
   { key: "dni", label: "DNI", hiddenByDefault: true },
   { key: "agendadoPor", label: "Agendado por", hiddenByDefault: true },
   { key: "observaciones", label: "Observaciones", hiddenByDefault: true },
+  { key: "tieneFicha", label: "Ficha (estado)" },
   { key: "estado", label: "Estado" },
   { key: "ficha", label: "Ficha" },
 ] as const;
@@ -360,6 +361,7 @@ export function TurnosDelDia() {
                   {show("dni") && <SortHead k="dni">DNI</SortHead>}
                   {show("agendadoPor") && <SortHead k="agendadoPor">Agendado por</SortHead>}
                   {show("observaciones") && <TableHead>Observaciones</TableHead>}
+                  {show("tieneFicha") && <TableHead>Ficha</TableHead>}
                   {show("estado") && (
                     <SortHead k="estado" className="w-44">
                       Estado
@@ -439,6 +441,24 @@ export function TurnosDelDia() {
                             </span>
                           ) : (
                             "—"
+                          )}
+                        </TableCell>
+                      )}
+                      {show("tieneFicha") && (
+                        <TableCell>
+                          {t.ficha ? (
+                            <Badge
+                              variant="outline"
+                              className={
+                                t.ficha.toLowerCase().startsWith("tiene")
+                                  ? "border-green-300 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400"
+                                  : "border-gray-300 bg-gray-50 text-gray-600 dark:bg-gray-900/40 dark:text-gray-400"
+                              }
+                            >
+                              {t.ficha}
+                            </Badge>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">—</span>
                           )}
                         </TableCell>
                       )}
