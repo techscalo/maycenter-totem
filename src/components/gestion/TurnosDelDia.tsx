@@ -98,6 +98,7 @@ const COLS = [
   { key: "tieneFicha", label: "Ficha" },
   { key: "estado", label: "Estado" },
   { key: "ficha", label: "Ficha GHL" },
+  { key: "pacienteContacto", label: "Paciente que reservó" },
 ] as const;
 const COLS_STORAGE = "turnos_cols_v1";
 
@@ -225,7 +226,7 @@ export function TurnosDelDia() {
     const term = q.trim().toLowerCase();
     if (term)
       list = list.filter((t) =>
-        `${t.paciente} ${t.dni ?? ""} ${t.profesional} ${t.obraSocial ?? ""} ${t.telefono ?? ""}`
+        `${t.paciente} ${t.pacienteContacto ?? ""} ${t.dni ?? ""} ${t.profesional} ${t.obraSocial ?? ""} ${t.telefono ?? ""}`
           .toLowerCase()
           .includes(term),
       );
@@ -396,6 +397,7 @@ export function TurnosDelDia() {
                     </SortHead>
                   )}
                   {show("ficha") && <TableHead className="text-center">Ficha GHL</TableHead>}
+                  {show("pacienteContacto") && <TableHead>Paciente que reservó</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -540,6 +542,9 @@ export function TurnosDelDia() {
                             </a>
                           )}
                         </TableCell>
+                      )}
+                      {show("pacienteContacto") && (
+                        <TableCell className="text-sm">{t.pacienteContacto ?? "—"}</TableCell>
                       )}
                     </TableRow>
                   );
