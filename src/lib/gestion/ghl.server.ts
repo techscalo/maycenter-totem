@@ -140,6 +140,21 @@ async function updateAppointmentStatus(cfg: GhlConfig, eventId: string, status: 
   if (!res.ok) throw new Error(`No se pudo actualizar el turno en GHL (${res.status})`);
 }
 
+// Actualiza un custom field de un contacto en GHL.
+async function updateContactField(cfg: GhlConfig, contactId: string, fieldId: string, value: string) {
+  const res = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${cfg.pit}`,
+      Version: "2021-07-28",
+      "User-Agent": "curl/8.4.0",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ customFields: [{ id: fieldId, value }] }),
+  });
+  if (!res.ok) throw new Error(`No se pudo actualizar el contacto en GHL (${res.status})`);
+}
+
 const onlyDigits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
 
 // Espejo GHL → sistema: si la cita ya viene marcada en GHL, reflejarlo.
@@ -314,6 +329,7 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
     rowId: `manual:${m.id}`,
     id: m.id as string | null,
     eventId: null as string | null,
+    contactId: null as string | null,
     hora: m.hora,
     startTime: `${m.fecha}T${m.hora}:00`,
     paciente: m.paciente,
@@ -421,6 +437,7 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
           rowId: `ghl:${e.eventId}`,
           id: e.eventId as string | null,
           eventId: e.eventId as string | null,
+          contactId: e.contactId as string | null,
           hora,
           startTime: e.startTime,
           paciente: c?.nombre ?? "—",
@@ -559,6 +576,42 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
       resource: "asistencia",
       entityId: data.eventId,
       resumen: `Marcó turno: ${ESTADO_LABEL[data.estado] ?? data.estado}`,
+      sucursalId: data.sucursalId,
+    });
+    return { ok: true };
+  });
+
+// Actualiza el campo "Ficha" (Tiene ficha / No tiene ficha) del contacto en GHL.
+const FICHA_VALORES = ["Tiene Ficha", "No tiene ficha"] as const;
+
+export const actualizarFichaContacto = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        sucursalId: z.string().uuid(),
+        contactId: z.string().min(1),
+        valor: z.enum(FICHA_VALORES),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    if (!ctx.sucursalIds.includes(data.sucursalId)) {
+      throw new Error("No tenés acceso a esa sucursal");
+    }
+    const [suc] = await db
+      .select({ slug: sucursales.slug })
+      .from(sucursales)
+      .where(eq(sucursales.id, data.sucursalId))
+      .limit(1);
+    const cfg = ghlConfigForSlug(suc?.slug ?? null);
+    if (!cfg) throw new Error("Esta sucursal no tiene GHL configurado");
+    await updateContactField(cfg, data.contactId, cfg.fichaField, data.valor);
+    await logAudit(ctx, {
+      action: "update",
+      resource: "ficha",
+      entityId: data.contactId,
+      resumen: `Marcó ficha: ${data.valor}`,
       sucursalId: data.sucursalId,
     });
     return { ok: true };
