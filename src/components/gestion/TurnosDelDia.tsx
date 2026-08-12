@@ -9,6 +9,7 @@ import {
   marcarEstadoTurnoManual,
   crearTurnoManual,
   eliminarTurnoManual,
+  actualizarFichaContacto,
 } from "@/lib/gestion/ghl.server";
 import { listOdontologos, listObrasSociales, getPacienteByDni } from "@/lib/gestion/data.server";
 import { isValidDni, DNI_ERROR } from "@/lib/dni";
@@ -176,6 +177,33 @@ export function TurnosDelDia() {
       qc.invalidateQueries({ queryKey });
     },
     onError: (e) => toast.error((e as Error).message || "No se pudo eliminar"),
+  });
+
+  const cambiarFicha = useMutation({
+    mutationFn: (v: { row: any; valor: string }) =>
+      actualizarFichaContacto({
+        data: { sucursalId, contactId: v.row.contactId, valor: v.valor } as any,
+      }),
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey });
+      const prev = qc.getQueryData<any>(queryKey);
+      qc.setQueryData<any>(queryKey, (old: any) =>
+        old
+          ? {
+              ...old,
+              turnos: old.turnos.map((t: any) =>
+                t.rowId === v.row.rowId ? { ...t, ficha: v.valor } : t,
+              ),
+            }
+          : old,
+      );
+      return { prev };
+    },
+    onError: (e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKey, ctx.prev);
+      toast.error((e as Error).message || "No se pudo actualizar la ficha");
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey }),
   });
 
   const soportado = data?.soportado ?? true;
@@ -446,19 +474,21 @@ export function TurnosDelDia() {
                       )}
                       {show("tieneFicha") && (
                         <TableCell>
-                          {t.ficha ? (
-                            <Badge
-                              variant="outline"
-                              className={
-                                t.ficha.toLowerCase().startsWith("tiene")
-                                  ? "border-green-300 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400"
-                                  : "border-gray-300 bg-gray-50 text-gray-600 dark:bg-gray-900/40 dark:text-gray-400"
-                              }
-                            >
-                              {t.ficha}
-                            </Badge>
-                          ) : (
+                          {t.tipo === "manual" ? (
                             <span className="text-sm text-muted-foreground">—</span>
+                          ) : (
+                            <Select
+                              value={t.ficha ?? undefined}
+                              onValueChange={(v) => cambiarFicha.mutate({ row: t, valor: v })}
+                            >
+                              <SelectTrigger className="h-8 w-36">
+                                <SelectValue placeholder="Sin definir" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Tiene Ficha">Tiene Ficha</SelectItem>
+                                <SelectItem value="No tiene ficha">No tiene ficha</SelectItem>
+                              </SelectContent>
+                            </Select>
                           )}
                         </TableCell>
                       )}
