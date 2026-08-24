@@ -35,7 +35,14 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { downloadExcel, downloadPdf } from "@/lib/gestion/exports";
-import { montoLinea, montoUsdLinea, esFacturable } from "@/lib/gestion/reportes";
+import {
+  montoLinea,
+  montoUsdLinea,
+  esFacturable,
+  copagoLinea,
+  facturacionOsLinea,
+} from "@/lib/gestion/reportes";
+import { SUBTIPO_LABEL } from "@/lib/gestion/codigos";
 
 import { PermissionGate } from "@/components/gestion/PermissionGate";
 
@@ -47,11 +54,17 @@ export const Route = createFileRoute("/_app/gestion/reportes/diario")({
   ),
 });
 
+const subTipo = (r: { estado_placa?: string | null }) =>
+  r.estado_placa ? (SUBTIPO_LABEL[r.estado_placa] ?? r.estado_placa) : "";
+
 function ReporteDiarioPage() {
   const { sucursalId, sucursalNombre } = useSucursalActiva();
-  const [fecha, setFecha] = useState(format(new Date(), "yyyy-MM-dd"));
+  const hoy = format(new Date(), "yyyy-MM-dd");
+  const [desde, setDesde] = useState(hoy);
+  const [hasta, setHasta] = useState(hoy);
   const [obraSocialId, setObraSocialId] = useState<string>("all");
   const [odontologoId, setOdontologoId] = useState<string>("all");
+  const rangoLabel = desde === hasta ? desde : `${desde}_a_${hasta}`;
 
   const { data: obrasSociales } = useQuery({
     queryKey: ["obras-sociales"],
@@ -66,12 +79,12 @@ function ReporteDiarioPage() {
 
   const { data: rows } = useQuery({
     enabled: !!sucursalId,
-    queryKey: ["reporte-diario", fecha, sucursalId, obraSocialId, odontologoId],
+    queryKey: ["reporte-diario", desde, hasta, sucursalId, obraSocialId, odontologoId],
     queryFn: () =>
       listPrestaciones({
         data: {
-          desde: fecha,
-          hasta: fecha,
+          desde,
+          hasta,
           sucursalId,
           ...(obraSocialId !== "all" ? { obraSocialId } : {}),
           ...(odontologoId !== "all" ? { odontologoId } : {}),
@@ -98,6 +111,8 @@ function ReporteDiarioPage() {
       ars: fact.reduce((s: number, x: any) => s + montoLinea(x), 0),
       usd: fact.reduce((s: number, x: any) => s + montoUsdLinea(x), 0),
       produccion: r.reduce((s: number, x: any) => s + montoLinea(x), 0),
+      copago: fact.reduce((s: number, x: any) => s + copagoLinea(x), 0),
+      facturacionOs: fact.reduce((s: number, x: any) => s + facturacionOsLinea(x), 0),
     };
   }, [rows]);
 
@@ -124,19 +139,27 @@ function ReporteDiarioPage() {
     ObraSocial: r.obras_sociales?.nombre ?? "",
     Codigo: r.nomencladores?.codigo ?? r.codigo_manual ?? "",
     Descripcion: r.nomencladores?.descripcion ?? r.descripcion_manual ?? "",
+    SubTipo: subTipo(r),
     Cantidad: r.cantidad,
     MontoUnitARS: Number(r.monto),
     MontoTotalARS: montoLinea(r),
+    Copago: copagoLinea(r),
+    FacturacionOS: facturacionOsLinea(r),
     MontoUSD: r.monto_usd ? Number(r.monto_usd) : "",
     Facturable: r.facturable === false ? "No" : "Sí",
+    Observaciones: r.observaciones ?? "",
   }));
 
-  const onExcel = () => downloadExcel(`reporte-diario-${fecha}.xlsx`, "Diario", exportRows);
+  const onExcel = () => downloadExcel(`reporte-${rangoLabel}.xlsx`, "Prestaciones", exportRows);
 
   const onPdf = () => {
+    const tituloRango =
+      desde === hasta
+        ? format(new Date(desde + "T00:00"), "dd/MM/yyyy")
+        : `${format(new Date(desde + "T00:00"), "dd/MM/yyyy")} — ${format(new Date(hasta + "T00:00"), "dd/MM/yyyy")}`;
     downloadPdf(
-      `reporte-diario-${fecha}.pdf`,
-      `Reporte diario — ${format(new Date(fecha + "T00:00"), "dd/MM/yyyy")}`,
+      `reporte-${rangoLabel}.pdf`,
+      `Reporte de prestaciones — ${tituloRango}`,
       `Sucursal: ${sucursalNombre} · Obra social: ${obraNombre} · Odontólogo: ${odontologoNombre}`,
       [
         "Odontólogo",
@@ -169,15 +192,54 @@ function ReporteDiarioPage() {
       <div>
         <h1 className="text-2xl font-bold">Reporte diario</h1>
         <p className="text-sm text-muted-foreground">
-          Agrupado por odontólogo. Exportable a Excel y PDF.
+          Por día o rango de fechas. Agrupado por odontólogo. Exportable a Excel y PDF.
         </p>
       </div>
 
       <Card>
-        <CardContent className="p-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+          <div className="md:col-span-4 flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDesde(hoy);
+                setHasta(hoy);
+              }}
+            >
+              Hoy
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const d = new Date();
+                d.setDate(d.getDate() - 6);
+                setDesde(format(d, "yyyy-MM-dd"));
+                setHasta(hoy);
+              }}
+            >
+              Últimos 7
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const d = new Date();
+                setDesde(format(new Date(d.getFullYear(), d.getMonth(), 1), "yyyy-MM-dd"));
+                setHasta(hoy);
+              }}
+            >
+              Este mes
+            </Button>
+          </div>
           <div>
-            <Label>Fecha</Label>
-            <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+            <Label>Desde</Label>
+            <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
+          </div>
+          <div>
+            <Label>Hasta</Label>
+            <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
           </div>
           <div>
             <Label>Obra social</Label>
@@ -211,7 +273,7 @@ function ReporteDiarioPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="md:col-span-3 flex gap-2 justify-end">
+          <div className="md:col-span-4 flex gap-2 justify-end">
             <Button variant="outline" onClick={onExcel} disabled={!rows?.length}>
               <FileSpreadsheet className="h-4 w-4 mr-2" /> Excel
             </Button>
@@ -241,6 +303,22 @@ function ReporteDiarioPage() {
           icon={<Stethoscope className="h-4 w-4" />}
           hint="Todo el trabajo realizado (incluye no facturables)"
         />
+        {total.copago > 0 && (
+          <Kpi
+            label="Copago (paciente)"
+            value={fmt(total.copago)}
+            icon={<Wallet className="h-4 w-4" />}
+            hint="A cargo del afiliado"
+          />
+        )}
+        {total.copago > 0 && (
+          <Kpi
+            label="Facturación a OS"
+            value={fmt(total.facturacionOs)}
+            icon={<Wallet className="h-4 w-4" />}
+            hint="A cargo de la obra social (arancel − copago)"
+          />
+        )}
         {total.usd > 0 && (
           <Kpi label="Facturado USD" value={`U$D ${total.usd.toLocaleString("es-AR")}`} />
         )}
@@ -249,7 +327,7 @@ function ReporteDiarioPage() {
       {grupos.length === 0 && (
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
-            Sin prestaciones para esta fecha.
+            Sin prestaciones para el período seleccionado.
           </CardContent>
         </Card>
       )}
@@ -318,6 +396,11 @@ function GrupoOdontologo({
                   <TableCell>{r.nomencladores?.codigo ?? r.codigo_manual}</TableCell>
                   <TableCell className="text-xs">
                     {r.nomencladores?.descripcion ?? r.descripcion_manual}
+                    {subTipo(r) && (
+                      <span className="ml-1 text-[10px] uppercase tracking-wide text-sky-600">
+                        · {subTipo(r)}
+                      </span>
+                    )}
                     {r.facturable === false && (
                       <span className="ml-1 text-[10px] uppercase tracking-wide text-amber-600">
                         · no facturable

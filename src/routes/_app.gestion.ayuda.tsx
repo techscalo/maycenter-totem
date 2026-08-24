@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Monitor, ClipboardList, LogIn, LayoutDashboard, BarChart3, ListPlus, Table2,
-  Stethoscope, DollarSign, FileText, Settings, ShieldCheck, HelpCircle, PlayCircle,
+  Stethoscope, DollarSign, FileText, Settings, ShieldCheck, HelpCircle, PlayCircle, Upload,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_app/gestion/ayuda")({
@@ -110,19 +110,22 @@ const SECCIONES: Sec[] = [
     resumen:
       "Se carga una atención completa: datos del paciente y todas las prestaciones que se le hicieron, en una o varias líneas.",
     pasos: [
-      "Completá fecha, paciente y DNI (obligatorio, 6 a 9 dígitos sin puntos). Opcional: código de consulta y 'Primera vez' si es paciente nuevo.",
+      "El primer campo es el DNI (obligatorio, 6 a 9 dígitos sin puntos): al completarlo, si el paciente ya existe se autocompletan nombre y obra social.",
+      "Revisá fecha (si no es la de hoy aparece un aviso) y paciente. Opcional: código de consulta y 'Primera vez' si es paciente nuevo.",
       "Elegí sucursal, piso y odontólogo (los selects se escriben para buscar).",
       "Elegí la obra social. Si la obra social tiene planes (ej. OSDE, Biomed), aparece el selector 'Plan'.",
-      "En cada línea elegí el código de prestación: el precio se completa solo según la obra social y el plan.",
+      "En cada línea elegí el código de prestación: el precio se completa solo según la obra social y el plan. Si el código tiene copago cargado, el campo Copago se autocompleta (editable).",
       "Para varias prestaciones, tocá 'Agregar línea'. Si algo no está en la lista, usá código/descripción manual.",
       "En cada línea, el check 'Facturable' viene activado. Desmarcalo en trabajos que no se facturan (pruebas, escaneos, impresiones).",
-      "Si la línea es una placa MIO, elegí su estado: Impresión, Entrega o Reimpresión.",
+      "Si la línea es una placa MIO, elegí su etapa: Impresión, Entrega o Reimpresión. Si es una prótesis, elegí el tipo: Completa, Parcial, Cromo cobalto, Flexible o Provisoria.",
       "Revisá el total y tocá 'Guardar atención'.",
     ],
     notas: [
+      "'Primera vez' ya no se marca solo cuando el DNI no existe: lo decidís vos con el check (la base de pacientes se está poblando).",
+      "Copago: es la parte a cargo del paciente. La facturación a la obra social = monto − copago.",
       "Particular: si elegís 'Particular', usás la lista de precios particular en ARS (se gestiona en Precios).",
-      "Los precios salen de la sección Precios; si están desactualizados, corregilos ahí.",
-      "El check 'Facturable' y el estado de la placa MIO alimentan los análisis del reporte IOMA. Cargalos bien para que los números cierren.",
+      "Los precios salen de la sección Precios; si están desactualizados, corregilos ahí o usá la actualización masiva por PDF.",
+      "El check 'Facturable' y el sub-tipo (placa MIO / prótesis) alimentan los análisis del reporte IOMA. Cargalos bien para que los números cierren.",
     ],
   },
   {
@@ -131,10 +134,15 @@ const SECCIONES: Sec[] = [
     titulo: "Prestaciones",
     ruta: "/gestion/prestaciones",
     acceso: "Requiere iniciar sesión.",
-    resumen: "Listado de todas las prestaciones cargadas (una fila por prestación), con filtros por fecha.",
+    resumen: "Listado de todas las prestaciones cargadas (una fila por prestación), con filtros por fecha, edición y borrado (incluso en lote).",
     pasos: [
       "Filtrá por rango de fechas para ver las atenciones de un período.",
       "Revisá paciente, obra social, código, monto y odontólogo de cada prestación.",
+      "Editá una fila con el lápiz: podés cambiar fecha, piso, paciente, monto, copago, observaciones y 'Primera vez'.",
+      "Para borrar varias juntas, tildá las filas con el checkbox y usá 'Eliminar seleccionadas'.",
+    ],
+    notas: [
+      "El borrado en lote requiere permiso; al borrar todos los ítems de una atención, esa atención también se elimina.",
     ],
   },
   {
@@ -165,9 +173,32 @@ const SECCIONES: Sec[] = [
       "Admin: editá el monto con el lápiz, agregá una prestación nueva, o eliminá con el tacho.",
     ],
     notas: [
-      "Biomed muestra el desglose O.S. / Paciente (copago).",
-      "Algunas filas de OSPJN (sección prótesis) vienen del documento original con errores: revisalas y corregí el monto a mano.",
-      "'Particular' se gestiona como una obra social más, en pesos.",
+      "El copago (parte a cargo del paciente) es editable por código; Biomed y otras OS con desglose lo usan.",
+      "Para cargar muchos precios de golpe, usá 'Actualización masiva de precios' (subís el PDF de la obra social).",
+      "'Particular' se gestiona como una obra social más, en pesos (con conversión ARS→USD por cotización).",
+    ],
+  },
+  {
+    id: "import-precios",
+    icon: Upload,
+    titulo: "Actualización masiva de precios (por PDF)",
+    ruta: "/gestion/admin → Nomencladores",
+    acceso: "Solo admin.",
+    resumen:
+      "Actualiza todos los aranceles de una obra social de una sola vez subiendo el PDF que manda la obra social. El sistema lo lee, muestra un preview de los cambios y recién aplica cuando confirmás.",
+    pasos: [
+      "En Configuración → Nomencladores, elegí la obra social.",
+      "Tocá 'Actualizar precios masivo' y subí el PDF del arancel (también acepta CSV/Excel).",
+      "El sistema detecta el formato solo (podés corregirlo con el selector) y muestra el preview: cuántos precios se actualizan, cuántos quedan igual, cuántos son nuevos y las advertencias.",
+      "Revisá la tabla de cambios (precio actual → nuevo). Si hay códigos nuevos, revisá la lista con su descripción y decidí si los creás (checkbox).",
+      "Tocá 'Aplicar': se actualizan los precios y queda registrado en el historial.",
+    ],
+    notas: [
+      "Nada se toca hasta que confirmás: el preview es solo lectura.",
+      "Es idempotente: si el PDF ya está aplicado, muestra 0 cambios.",
+      "Cada actualización guarda los precios viejos en el historial (reversible) y queda en el Registro de cambios.",
+      "Las líneas que no se pueden leer o con precios sospechosos salen como advertencias; no se aplican solas.",
+      "Formatos soportados: lista plana (ej. Avalian), lista con capítulos (ej. OSPJN) y matriz por plan (ej. OSDE). Una obra social con otro formato requiere agregar su lector.",
     ],
   },
   {
@@ -179,12 +210,13 @@ const SECCIONES: Sec[] = [
     resumen:
       "Reportes para control y presentación: el diario resume la actividad del día; el de IOMA arma la liquidación específica de esa obra social.",
     pasos: [
-      "Reporte diario: elegí la fecha y, si querés, filtrá por sucursal, obra social y/o odontólogo. Arriba ves los totales (pacientes, prestaciones y facturación).",
+      "Reporte diario: elegí un día o un rango de fechas (con atajos Hoy / Últimos 7 / Este mes) y, si querés, filtrá por sucursal, obra social y/o odontólogo. Arriba ves los totales.",
       "Reporte IOMA: elegí el período. Además del total, trae los análisis específicos de IOMA.",
-      "Revisá los totales y exportá a Excel o PDF.",
+      "Revisá los totales y exportá a Excel o PDF (el PDF sale con el branding de Maycenter y los totales arriba).",
     ],
     notas: [
       "Pacientes = cantidad de atenciones distintas; prestaciones = cantidad de líneas cargadas.",
+      "Cuando hay copago cargado, el reporte muestra además 'Copago (paciente)' y 'Facturación a OS' (arancel − copago).",
       "El reporte IOMA muestra: primeras consultas, actividades por odontólogo, placas MIO (impresas vs entregadas, con sus sesiones), incrustaciones y trabajos no facturables por odontólogo.",
     ],
   },
@@ -200,8 +232,8 @@ const SECCIONES: Sec[] = [
       "Sucursales: alta/baja de las sedes (ej. CABA, La Plata).",
       "Pisos: pisos/consultorios dentro de cada sucursal.",
       "Obras sociales: listado de coberturas; marcar activas e indicar si son particular.",
-      "Nomencladores: aranceles por obra social (también editables desde la pantalla Precios).",
-      "Servicios particulares: catálogo aparte de servicios en USD.",
+      "Nomencladores: aranceles por obra social (código, monto y copago editables), con 'Actualizar precios masivo' para cargar todo desde un PDF.",
+      "Servicios particulares: catálogo en USD; podés cargar el precio en pesos y una cotización del día para que calcule el USD solo.",
     ],
     notas: ["Crear los usuarios desde acá garantiza que queden con el rol y la sucursal correctos."],
   },

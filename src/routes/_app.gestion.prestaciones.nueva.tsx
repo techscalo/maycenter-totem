@@ -19,7 +19,12 @@ import {
   createAtencion,
   getPacienteByDni,
 } from "@/lib/gestion/data.server";
-import { esPlacaMio } from "@/lib/gestion/codigos";
+import {
+  esPlacaMio,
+  esProtesis,
+  ESTADO_PLACA_OPCIONES,
+  TIPO_PROTESIS_OPCIONES,
+} from "@/lib/gestion/codigos";
 import { isValidDni, DNI_ERROR } from "@/lib/dni";
 
 export const Route = createFileRoute("/_app/gestion/prestaciones/nueva")({
@@ -39,7 +44,7 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-type EstadoPlaca = "" | "impresion" | "entrega" | "reimpresion";
+type EstadoPlaca = string;
 
 type LineItem = {
   key: string;
@@ -49,6 +54,7 @@ type LineItem = {
   descripcionManual: string;
   cantidad: number;
   monto: number;
+  montoPaciente: string | number;
   montoUsd: string | number;
   cotizacionUsd: string | number;
   facturable: boolean;
@@ -63,6 +69,7 @@ const emptyLine = (): LineItem => ({
   descripcionManual: "",
   cantidad: 1,
   monto: 0,
+  montoPaciente: "",
   montoUsd: "",
   cotizacionUsd: "",
   facturable: true,
@@ -144,8 +151,10 @@ function NuevaPrestacion() {
     setHeader((h) => ({ ...h, sucursal_id: sucursalActivaId, piso_id: "", odontologo_id: "" }));
   }, [sucursalActivaId, header.sucursal_id]);
 
-  // Al completar el DNI: si el paciente existe, autocompleta nombre/OS; si no existe,
-  // lo marca como primera consulta (paciente nuevo).
+  // Al completar el DNI: si el paciente existe, autocompleta nombre/OS y destilda
+  // "primera vez". Si no existe NO se marca "primera vez" en automático: la tabla de
+  // pacientes se está poblando y cargando en diferido daba falsos positivos; lo decide
+  // el recepcionista con el checkbox.
   const onDniBlur = async () => {
     const dni = header.dni.trim();
     if (dni.length < 6) return;
@@ -158,8 +167,6 @@ function NuevaPrestacion() {
           obra_social_id: h.obra_social_id || p.obra_social_id || "",
           primera_vez: false,
         }));
-      } else {
-        setHeader((h) => ({ ...h, primera_vez: true }));
       }
     } catch {
       /* silencioso: si falla el autocompletado, el usuario carga a mano */
@@ -169,14 +176,31 @@ function NuevaPrestacion() {
   const patchItem = (key: string, patch: Partial<LineItem>) =>
     setItems((arr) => arr.map((it) => (it.key === key ? { ...it, ...patch } : it)));
 
-  const esLineaPlacaMio = (it: LineItem) => {
+  // Código/descripción efectivos de la línea, sin importar la rama (nomenclador o particular).
+  const codDescLinea = (it: LineItem) => {
     const nom: any = nomencladores.find((n: any) => n.id === it.nomencladorId);
-    return esPlacaMio(nom?.codigo, nom?.descripcion ?? it.descripcionManual);
+    const serv: any = servicios.find((s: any) => s.id === it.servicioParticularId);
+    return {
+      codigo: nom?.codigo ?? serv?.codigo ?? it.codigoManual,
+      descripcion: nom?.descripcion ?? serv?.descripcion ?? it.descripcionManual,
+    };
+  };
+  const esLineaPlacaMio = (it: LineItem) => {
+    const { codigo, descripcion } = codDescLinea(it);
+    return esPlacaMio(codigo, descripcion);
+  };
+  const esLineaProtesis = (it: LineItem) => {
+    const { codigo, descripcion } = codDescLinea(it);
+    return esProtesis(codigo, descripcion);
   };
 
   const onNomencladorChange = (key: string, id: string) => {
     const nom: any = nomencladores.find((n: any) => n.id === id);
-    patchItem(key, { nomencladorId: id, monto: nom ? Number(nom.monto) : 0 });
+    patchItem(key, {
+      nomencladorId: id,
+      monto: nom ? Number(nom.monto) : 0,
+      montoPaciente: nom?.montoPaciente != null ? Number(nom.montoPaciente) : "",
+    });
   };
 
   const onServicioChange = (key: string, id: string) => {
@@ -228,6 +252,7 @@ function NuevaPrestacion() {
             descripcionManual: it.descripcionManual || null,
             cantidad: Number(it.cantidad) || 1,
             monto: Number(it.monto) || 0,
+            montoPaciente: it.montoPaciente === "" ? null : Number(it.montoPaciente),
             montoUsd: it.montoUsd === "" ? null : Number(it.montoUsd),
             cotizacionUsd: it.cotizacionUsd === "" ? null : Number(it.cotizacionUsd),
             facturable: it.facturable,
@@ -259,12 +284,18 @@ function NuevaPrestacion() {
         <CardContent className="p-6 space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <Label>Fecha</Label>
+              <Label>DNI</Label>
               <Input
-                type="date"
-                value={header.fecha}
-                onChange={(e) => setHeader({ ...header, fecha: e.target.value })}
+                inputMode="numeric"
+                value={header.dni}
+                onChange={(e) => setHeader({ ...header, dni: e.target.value.replace(/\D/g, "") })}
+                onBlur={onDniBlur}
+                autoFocus
+                placeholder="Ingresá el DNI y presioná Tab"
               />
+              {header.dni && !isValidDni(header.dni) && (
+                <p className="text-[11px] text-destructive mt-1">{DNI_ERROR}</p>
+              )}
             </div>
             <div className="md:col-span-2">
               <Label>Paciente</Label>
@@ -272,20 +303,18 @@ function NuevaPrestacion() {
                 value={header.paciente}
                 onChange={(e) => setHeader({ ...header, paciente: e.target.value })}
                 placeholder="Nombre y apellido"
-                autoFocus
               />
             </div>
 
             <div>
-              <Label>DNI</Label>
+              <Label>Fecha</Label>
               <Input
-                inputMode="numeric"
-                value={header.dni}
-                onChange={(e) => setHeader({ ...header, dni: e.target.value.replace(/\D/g, "") })}
-                onBlur={onDniBlur}
+                type="date"
+                value={header.fecha}
+                onChange={(e) => setHeader({ ...header, fecha: e.target.value })}
               />
-              {header.dni && !isValidDni(header.dni) && (
-                <p className="text-[11px] text-destructive mt-1">{DNI_ERROR}</p>
+              {header.fecha !== todayISO() && (
+                <p className="text-[11px] text-amber-600 mt-1">No es la fecha de hoy</p>
               )}
             </div>
             <div>
@@ -482,7 +511,7 @@ function NuevaPrestacion() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                  <div className="md:col-span-7">
+                  <div className="md:col-span-6">
                     <Label>Código de prestación</Label>
                     <Combobox
                       options={nomencladoresFiltrados.map((n: any) => ({
@@ -515,7 +544,7 @@ function NuevaPrestacion() {
                       }
                     />
                   </div>
-                  <div className="md:col-span-3">
+                  <div className="md:col-span-2">
                     <Label>Monto ARS</Label>
                     <Input
                       type="number"
@@ -527,6 +556,17 @@ function NuevaPrestacion() {
                           monto: e.target.value === "" ? 0 : Number(e.target.value),
                         })
                       }
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Copago</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="A cargo del paciente"
+                      value={it.montoPaciente}
+                      onChange={(e) => patchItem(it.key, { montoPaciente: e.target.value })}
                     />
                   </div>
                   {!it.nomencladorId && (
@@ -574,9 +614,30 @@ function NuevaPrestacion() {
                         }
                       >
                         <option value="">—</option>
-                        <option value="impresion">Impresión</option>
-                        <option value="entrega">Entrega</option>
-                        <option value="reimpresion">Reimpresión</option>
+                        {ESTADO_PLACA_OPCIONES.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {!esLineaPlacaMio(it) && esLineaProtesis(it) && (
+                    <label className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Tipo de prótesis:</span>
+                      <select
+                        className="h-9 rounded-md border bg-background px-2 text-sm"
+                        value={it.estadoPlaca}
+                        onChange={(e) =>
+                          patchItem(it.key, { estadoPlaca: e.target.value as EstadoPlaca })
+                        }
+                      >
+                        <option value="">—</option>
+                        {TIPO_PROTESIS_OPCIONES.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
                       </select>
                     </label>
                   )}

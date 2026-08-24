@@ -1,5 +1,5 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import {
   Trash2,
@@ -24,6 +32,7 @@ import {
   Copy,
   ExternalLink,
   MonitorSmartphone,
+  Upload,
 } from "lucide-react";
 import { useUserContext } from "@/lib/gestion/use-auth";
 import {
@@ -44,6 +53,9 @@ import {
   createNomenclador,
   updateNomenclador,
   deleteNomenclador,
+  previewNomencladorImport,
+  previewNomencladorImportPdf,
+  applyNomencladorImport,
   listServiciosParticularesAdmin,
   createServicioParticular,
   updateServicioParticular,
@@ -521,6 +533,323 @@ function OdontologosTab() {
   );
 }
 
+// Parsea números en formato AR ("17.826,57") o plano ("21044.74").
+function toNum(v: unknown): number {
+  if (typeof v === "number") return v;
+  let s = String(v ?? "").trim().replace(/\s/g, "");
+  if (!s) return NaN;
+  if (s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
+  else if (s.includes(",")) s = s.replace(",", ".");
+  return Number(s);
+}
+
+const IMPORT_SYNONYMS: Record<string, string[]> = {
+  codigo: ["codigo", "código", "code", "cod", "nomenclador"],
+  plan: ["plan"],
+  descripcion: ["descripcion", "descripción", "detalle", "prestacion", "prestación"],
+  monto: ["monto", "precio", "importe", "arancel", "valor", "total"],
+  copago: ["copago", "coseguro", "cargo afiliado", "cargo paciente", "paciente"],
+};
+const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+
+// Mapea columnas del archivo a los campos canónicos y arma las filas.
+function sheetToCanonical(sheet: any[]): { rows: any[]; mapped: Record<string, string | null> } {
+  const headers = sheet.length ? Object.keys(sheet[0]) : [];
+  const mapped: Record<string, string | null> = {};
+  for (const [field, syns] of Object.entries(IMPORT_SYNONYMS)) {
+    mapped[field] = headers.find((h) => syns.some((s) => norm(h).includes(s))) ?? null;
+  }
+  const rows = sheet
+    .map((r) => {
+      const codigo = mapped.codigo ? String(r[mapped.codigo] ?? "").trim() : "";
+      if (!codigo) return null;
+      const monto = mapped.monto ? toNum(r[mapped.monto]) : NaN;
+      const copagoRaw = mapped.copago ? r[mapped.copago] : "";
+      const copago = copagoRaw === "" || copagoRaw == null ? null : toNum(copagoRaw);
+      const plan = mapped.plan ? String(r[mapped.plan] ?? "").trim() || null : null;
+      const descripcion = mapped.descripcion ? String(r[mapped.descripcion] ?? "").trim() : undefined;
+      return { codigo, plan, descripcion, monto: Number.isFinite(monto) ? monto : 0, copago };
+    })
+    .filter(Boolean);
+  return { rows, mapped };
+}
+
+type ImportPreview = Awaited<ReturnType<typeof previewNomencladorImport>>;
+type Archetype = "flat-ars" | "flat-dotted" | "matrix-plans";
+const ARCHETYPE_LABEL: Record<Archetype, string> = {
+  "flat-ars": "Lista plana (ej. Avalian)",
+  "flat-dotted": "Lista con capítulos (ej. OSPJN)",
+  "matrix-plans": "Matriz por plan (ej. OSDE)",
+};
+
+function NomencladorImportDialog({
+  obraSocialId,
+  obraNombre,
+  onDone,
+}: {
+  obraSocialId: string;
+  obraNombre: string;
+  onDone: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [fileName, setFileName] = useState("");
+  const [rows, setRows] = useState<any[]>([]);
+  const [mapped, setMapped] = useState<Record<string, string | null>>({});
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [createMissing, setCreateMissing] = useState(false);
+  const [pdfB64, setPdfB64] = useState<string | null>(null);
+  const [archetype, setArchetype] = useState<Archetype | null>(null);
+  const [parseWarnings, setParseWarnings] = useState<string[]>([]);
+
+  const reset = () => {
+    setFileName("");
+    setRows([]);
+    setMapped({});
+    setPreview(null);
+    setCreateMissing(false);
+    setPdfB64(null);
+    setArchetype(null);
+    setParseWarnings([]);
+  };
+
+  const previewMut = useMutation({
+    mutationFn: (r: any[]) => previewNomencladorImport({ data: { obraSocialId, rows: r } }),
+    onSuccess: (p) => setPreview(p),
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const previewPdfMut = useMutation({
+    mutationFn: (vars: { b64: string; arch?: Archetype }) =>
+      previewNomencladorImportPdf({
+        data: { obraSocialId, fileBase64: vars.b64, archetype: vars.arch },
+      }),
+    onSuccess: (r) => {
+      setPreview(r);
+      setRows(r.rows);
+      setArchetype(r.archetype);
+      setParseWarnings(r.parseWarnings);
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const analyzing = previewMut.isPending || previewPdfMut.isPending;
+  const applyMut = useMutation({
+    mutationFn: () => applyNomencladorImport({ data: { obraSocialId, rows, createMissing } }),
+    onSuccess: (r) => {
+      toast.success(`${r.updated} actualizados${r.created ? `, ${r.created} nuevos` : ""}`);
+      onDone();
+      setOpen(false);
+      reset();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const onFile = async (file: File) => {
+    reset();
+    setFileName(file.name);
+    const buf = await file.arrayBuffer();
+    if (/\.pdf$/i.test(file.name)) {
+      const bytes = new Uint8Array(buf);
+      let bin = "";
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk)
+        bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      const b64 = btoa(bin);
+      setPdfB64(b64);
+      previewPdfMut.mutate({ b64 });
+      return;
+    }
+    const wb = XLSX.read(buf, { type: "array" });
+    const sheet = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }) as any[];
+    const { rows: canon, mapped: m } = sheetToCanonical(sheet);
+    setRows(canon);
+    setMapped(m);
+    if (!m.codigo || !m.monto) {
+      toast.error("No se detectaron las columnas Código y Monto en el archivo");
+      return;
+    }
+    if (canon.length) previewMut.mutate(canon);
+  };
+
+  return (
+    <>
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        <Upload className="h-4 w-4 mr-2" />
+        Actualizar precios masivo
+      </Button>
+      <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : (setOpen(false), reset()))}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Actualizar precios · {obraNombre}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Subí el <b>PDF</b> del arancel de la obra social (o un CSV/Excel con columnas{" "}
+              <b>código</b>, <b>monto</b>, <b>plan</b>, <b>copago</b>). Se previsualizan los
+              cambios antes de aplicar.
+            </p>
+            <Input
+              type="file"
+              accept=".pdf,.csv,.xlsx,.xls"
+              onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
+            />
+            {fileName && !pdfB64 && (
+              <p className="text-xs text-muted-foreground">
+                {fileName} · {rows.length} filas · columnas detectadas:{" "}
+                {Object.entries(mapped)
+                  .filter(([, v]) => v)
+                  .map(([k, v]) => `${k}→${v}`)
+                  .join(", ") || "—"}
+              </p>
+            )}
+            {pdfB64 && archetype && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span>{fileName} · formato detectado:</span>
+                <select
+                  className="h-8 rounded-md border bg-background px-2 text-xs"
+                  value={archetype}
+                  onChange={(e) =>
+                    pdfB64 && previewPdfMut.mutate({ b64: pdfB64, arch: e.target.value as Archetype })
+                  }
+                >
+                  {(Object.keys(ARCHETYPE_LABEL) as Archetype[]).map((a) => (
+                    <option key={a} value={a}>
+                      {ARCHETYPE_LABEL[a]}
+                    </option>
+                  ))}
+                </select>
+                {parseWarnings.length > 0 && (
+                  <span className="text-amber-600">· {parseWarnings.length} líneas sin parsear</span>
+                )}
+              </div>
+            )}
+
+            {analyzing && <p className="text-sm">Analizando…</p>}
+
+            {preview && (
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2 text-sm">
+                  <Badge tone="brand">{preview.toUpdate.length} a actualizar</Badge>
+                  <Badge>{preview.unchanged} sin cambios</Badge>
+                  <Badge tone="green">{preview.toCreate.length} nuevos</Badge>
+                  <Badge>{preview.missingInFile.length} en DB no en archivo</Badge>
+                  {preview.warnings.length > 0 && (
+                    <Badge tone="amber">{preview.warnings.length} warnings</Badge>
+                  )}
+                </div>
+
+                {preview.warnings.length > 0 && (
+                  <div className="max-h-24 overflow-auto rounded border p-2 text-xs text-amber-700">
+                    {preview.warnings.slice(0, 30).map((w, i) => (
+                      <div key={i}>
+                        {w.codigo}
+                        {w.plan ? ` [${w.plan}]` : ""}: {w.issue}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {preview.toUpdate.length > 0 && (
+                  <div className="max-h-56 overflow-auto rounded border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Código</TableHead>
+                          <TableHead>Plan</TableHead>
+                          <TableHead className="text-right">Actual</TableHead>
+                          <TableHead className="text-right">Nuevo</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {preview.toUpdate.slice(0, 200).map((u, i) => (
+                          <TableRow key={i}>
+                            <TableCell className="font-mono">{u.codigo}</TableCell>
+                            <TableCell>{u.plan ?? "—"}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">
+                              ${u.montoOld}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">${u.montoNew}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                {preview.toCreate.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-emerald-700">
+                      Códigos nuevos (no existen en la base):
+                    </p>
+                    <div className="max-h-40 overflow-auto rounded border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Código</TableHead>
+                            <TableHead>Plan</TableHead>
+                            <TableHead>Descripción</TableHead>
+                            <TableHead className="text-right">Monto</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {preview.toCreate.slice(0, 200).map((c, i) => (
+                            <TableRow key={i}>
+                              <TableCell className="font-mono">{c.codigo}</TableCell>
+                              <TableCell>{c.plan ?? "—"}</TableCell>
+                              <TableCell className="text-xs">{c.descripcion}</TableCell>
+                              <TableCell className="text-right font-medium">${c.monto}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={createMissing}
+                        onChange={(e) => setCreateMissing(e.target.checked)}
+                      />
+                      Crear estos {preview.toCreate.length} códigos nuevos
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => (setOpen(false), reset())}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={
+                !preview ||
+                applyMut.isPending ||
+                (preview.toUpdate.length === 0 && !(createMissing && preview.toCreate.length > 0))
+              }
+              onClick={() => applyMut.mutate()}
+            >
+              {applyMut.isPending
+                ? "Aplicando…"
+                : `Aplicar ${preview ? preview.toUpdate.length + (createMissing ? preview.toCreate.length : 0) : 0} cambios`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function Badge({ children, tone }: { children: ReactNode; tone?: "brand" | "green" | "amber" }) {
+  const cls =
+    tone === "brand"
+      ? "bg-sky-100 text-sky-800"
+      : tone === "green"
+        ? "bg-emerald-100 text-emerald-800"
+        : tone === "amber"
+          ? "bg-amber-100 text-amber-800"
+          : "bg-muted text-muted-foreground";
+  return <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs ${cls}`}>{children}</span>;
+}
+
 function NomencladoresTab() {
   const qc = useQueryClient();
   const { data: obras = [] } = useQuery({
@@ -543,7 +872,7 @@ function NomencladoresTab() {
     return data.filter((n: any) => `${n.codigo} ${n.descripcion}`.toLowerCase().includes(q));
   }, [data, busqueda]);
 
-  const [form, setForm] = useState({ codigo: "", descripcion: "", monto: 0 });
+  const [form, setForm] = useState({ codigo: "", descripcion: "", monto: 0, copago: "" });
   const create = useMutation({
     mutationFn: () =>
       createNomenclador({
@@ -552,19 +881,29 @@ function NomencladoresTab() {
           codigo: form.codigo.trim(),
           descripcion: form.descripcion.trim(),
           monto: Number(form.monto) || 0,
+          montoPaciente: form.copago.trim() === "" ? null : Number(form.copago),
         },
       }),
     onSuccess: () => {
       toast.success("Código creado");
-      setForm({ codigo: "", descripcion: "", monto: 0 });
+      setForm({ codigo: "", descripcion: "", monto: 0, copago: "" });
       invalidate();
     },
     onError: (e) => toast.error((e as Error).message),
   });
   const upd = useMutation({
-    mutationFn: ({ id, monto }: { id: string; monto: number }) =>
-      updateNomenclador({ data: { id, monto } }),
-    onSuccess: invalidate,
+    mutationFn: (data: {
+      id: string;
+      codigo?: string;
+      descripcion?: string;
+      monto?: number;
+      montoPaciente?: number | null;
+    }) => updateNomenclador({ data }),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Guardado");
+    },
+    onError: (e) => toast.error((e as Error).message),
   });
   const del = useMutation({
     mutationFn: (id: string) => deleteNomenclador({ data: { id } }),
@@ -578,25 +917,34 @@ function NomencladoresTab() {
   return (
     <Card>
       <CardContent className="p-4 space-y-4">
-        <div>
-          <Label>Obra social</Label>
-          <select
-            className="h-10 w-full md:w-80 rounded-md border bg-transparent px-3 text-sm"
-            value={obraId}
-            onChange={(e) => setObraId(e.target.value)}
-          >
-            <option value="">Elegí una obra social…</option>
-            {obras.map((o: any) => (
-              <option key={o.id} value={o.id}>
-                {o.nombre}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <Label>Obra social</Label>
+            <select
+              className="h-10 w-full md:w-80 rounded-md border bg-transparent px-3 text-sm"
+              value={obraId}
+              onChange={(e) => setObraId(e.target.value)}
+            >
+              <option value="">Elegí una obra social…</option>
+              {obras.map((o: any) => (
+                <option key={o.id} value={o.id}>
+                  {o.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+          {obraId && (
+            <NomencladorImportDialog
+              obraSocialId={obraId}
+              obraNombre={obras.find((o: any) => o.id === obraId)?.nombre ?? ""}
+              onDone={invalidate}
+            />
+          )}
         </div>
 
         {obraId && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-[120px_1fr_140px_auto] gap-2 items-end">
+            <div className="grid grid-cols-1 md:grid-cols-[120px_1fr_140px_140px_auto] gap-2 items-end">
               <div>
                 <Label>Código</Label>
                 <Input
@@ -619,6 +967,17 @@ function NomencladoresTab() {
                   step="0.01"
                   value={form.monto}
                   onChange={(e) => setForm({ ...form, monto: Number(e.target.value) })}
+                />
+              </div>
+              <div>
+                <Label>Copago</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="Opcional"
+                  value={form.copago}
+                  onChange={(e) => setForm({ ...form, copago: e.target.value })}
                 />
               </div>
               <Button onClick={() => form.codigo.trim() && create.mutate()}>
@@ -645,17 +1004,36 @@ function NomencladoresTab() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Código</TableHead>
+                  <TableHead className="w-32">Código</TableHead>
                   <TableHead>Descripción</TableHead>
-                  <TableHead className="w-40 text-right">Monto</TableHead>
+                  <TableHead className="w-36 text-right">Monto</TableHead>
+                  <TableHead className="w-36 text-right">Copago</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {dataFiltrada.map((n: any) => (
                   <TableRow key={n.id}>
-                    <TableCell className="font-mono">{n.codigo}</TableCell>
-                    <TableCell>{n.descripcion}</TableCell>
+                    <TableCell>
+                      <Input
+                        className="h-8 font-mono"
+                        defaultValue={n.codigo}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          if (v && v !== n.codigo) upd.mutate({ id: n.id, codigo: v });
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        className="h-8"
+                        defaultValue={n.descripcion}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          if (v && v !== n.descripcion) upd.mutate({ id: n.id, descripcion: v });
+                        }}
+                      />
+                    </TableCell>
                     <TableCell className="text-right">
                       <Input
                         type="number"
@@ -666,6 +1044,22 @@ function NomencladoresTab() {
                         onBlur={(e) => {
                           const v = Number(e.target.value);
                           if (v !== Number(n.monto)) upd.mutate({ id: n.id, monto: v });
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="—"
+                        className="h-8 text-right"
+                        defaultValue={n.montoPaciente ?? ""}
+                        onBlur={(e) => {
+                          const raw = e.target.value.trim();
+                          const v = raw === "" ? null : Number(raw);
+                          const actual = n.montoPaciente == null ? null : Number(n.montoPaciente);
+                          if (v !== actual) upd.mutate({ id: n.id, montoPaciente: v });
                         }}
                       />
                     </TableCell>
@@ -682,7 +1076,7 @@ function NomencladoresTab() {
                 ))}
                 {dataFiltrada.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
                       {busqueda.trim()
                         ? "Sin resultados para la búsqueda."
                         : "Sin códigos cargados."}
@@ -713,7 +1107,12 @@ function ParticularesTab() {
     return data.filter((s: any) => `${s.codigo ?? ""} ${s.descripcion}`.toLowerCase().includes(q));
   }, [data, busqueda]);
 
-  const [form, setForm] = useState({ codigo: "", descripcion: "", precio_usd: 0 });
+  // Cotización manual del día para convertir ARS → USD (el catálogo se guarda en USD).
+  const [cotizacion, setCotizacion] = useState(1530);
+  const arsToUsd = (ars: number) =>
+    cotizacion > 0 ? Math.round((ars / cotizacion) * 100) / 100 : 0;
+
+  const [form, setForm] = useState({ codigo: "", descripcion: "", precio_ars: "", precio_usd: 0 });
   const create = useMutation({
     mutationFn: () =>
       createServicioParticular({
@@ -725,15 +1124,23 @@ function ParticularesTab() {
       }),
     onSuccess: () => {
       toast.success("Servicio creado");
-      setForm({ codigo: "", descripcion: "", precio_usd: 0 });
+      setForm({ codigo: "", descripcion: "", precio_ars: "", precio_usd: 0 });
       invalidate();
     },
     onError: (e) => toast.error((e as Error).message),
   });
   const upd = useMutation({
-    mutationFn: ({ id, precioUsd }: { id: string; precioUsd: number }) =>
-      updateServicioParticular({ data: { id, precioUsd } }),
-    onSuccess: invalidate,
+    mutationFn: (data: {
+      id: string;
+      codigo?: string | null;
+      descripcion?: string;
+      precioUsd?: number;
+    }) => updateServicioParticular({ data }),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Guardado");
+    },
+    onError: (e) => toast.error((e as Error).message),
   });
   const del = useMutation({
     mutationFn: (id: string) => deleteServicioParticular({ data: { id } }),
@@ -750,7 +1157,23 @@ function ParticularesTab() {
         <p className="text-sm text-muted-foreground">
           Catálogo de servicios particulares con precio en dólares (lista aparte de obras sociales).
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-[120px_1fr_140px_auto] gap-2 items-end">
+        <div className="flex items-end gap-2">
+          <div>
+            <Label>Cotización USD del día</Label>
+            <Input
+              type="number"
+              min={0}
+              step="1"
+              className="w-40"
+              value={cotizacion}
+              onChange={(e) => setCotizacion(Number(e.target.value) || 0)}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground pb-2">
+            $ por dólar. Se usa para convertir ARS → USD (editable).
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-[120px_1fr_130px_130px_auto] gap-2 items-end">
           <div>
             <Label>Código</Label>
             <Input
@@ -764,6 +1187,23 @@ function ParticularesTab() {
             <Input
               value={form.descripcion}
               onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Precio ARS</Label>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="En pesos"
+              value={form.precio_ars}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  precio_ars: e.target.value,
+                  precio_usd: arsToUsd(Number(e.target.value)),
+                })
+              }
             />
           </div>
           <div>
@@ -800,17 +1240,53 @@ function ParticularesTab() {
             <TableRow>
               <TableHead>Código</TableHead>
               <TableHead>Descripción</TableHead>
-              <TableHead className="w-40 text-right">Precio USD</TableHead>
+              <TableHead className="w-36 text-right">Precio ARS</TableHead>
+              <TableHead className="w-36 text-right">Precio USD</TableHead>
               <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {dataFiltrada.map((s: any) => (
               <TableRow key={s.id}>
-                <TableCell className="font-mono">{s.codigo ?? "—"}</TableCell>
-                <TableCell>{s.descripcion}</TableCell>
+                <TableCell>
+                  <Input
+                    className="h-8 font-mono"
+                    placeholder="—"
+                    defaultValue={s.codigo ?? ""}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v !== (s.codigo ?? "")) upd.mutate({ id: s.id, codigo: v || null });
+                    }}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Input
+                    className="h-8"
+                    defaultValue={s.descripcion}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v && v !== s.descripcion) upd.mutate({ id: s.id, descripcion: v });
+                    }}
+                  />
+                </TableCell>
                 <TableCell className="text-right">
                   <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="→ USD"
+                    className="h-8 text-right"
+                    onBlur={(e) => {
+                      const ars = Number(e.target.value);
+                      if (!ars) return;
+                      upd.mutate({ id: s.id, precioUsd: arsToUsd(ars) });
+                      e.target.value = "";
+                    }}
+                  />
+                </TableCell>
+                <TableCell className="text-right">
+                  <Input
+                    key={`usd-${s.id}-${s.precioUsd}`}
                     type="number"
                     min={0}
                     step="0.01"
@@ -835,7 +1311,7 @@ function ParticularesTab() {
             ))}
             {dataFiltrada.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
                   {busqueda.trim() ? "Sin resultados para la búsqueda." : "Sin servicios cargados."}
                 </TableCell>
               </TableRow>
