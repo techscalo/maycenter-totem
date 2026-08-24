@@ -4,13 +4,16 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   listObrasSociales,
   listOdontologos,
+  listPisos,
   listPrestaciones,
   deleteAtencionItem,
+  deleteAtencionItems,
   updateAtencionItem,
   updateAtencionCabecera,
 } from "@/lib/gestion/data.server";
 import { useSucursalActiva } from "@/lib/gestion/sucursal-activa";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
@@ -49,8 +52,11 @@ type Prestacion = {
   fecha: string;
   paciente: string;
   dni: string;
+  piso_id: string | null;
+  primera_vez: boolean;
   cantidad: number;
   monto: number;
+  monto_paciente: number | null;
   monto_usd: number | null;
   observaciones: string | null;
   codigo_manual: string | null;
@@ -80,6 +86,7 @@ function PrestacionesList() {
   const [odontologoId, setOdontologoId] = useState<string>("");
   const [busqueda, setBusqueda] = useState("");
   const [editing, setEditing] = useState<Prestacion | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const { data: obras = [] } = useQuery({
     queryKey: ["obras_sociales"],
@@ -89,6 +96,11 @@ function PrestacionesList() {
     enabled: !!sucursalId,
     queryKey: ["odontologos", sucursalId],
     queryFn: () => listOdontologos({ data: { sucursalId } }),
+  });
+  const { data: pisos = [] } = useQuery({
+    enabled: !!sucursalId,
+    queryKey: ["pisos", sucursalId],
+    queryFn: () => listPisos({ data: { sucursalId } }),
   });
 
   const { data: rows = [], isLoading } = useQuery({
@@ -135,16 +147,50 @@ function PrestacionesList() {
     onError: (e) => toast.error((e as Error).message),
   });
 
+  const bulkDelMut = useMutation({
+    mutationFn: (itemIds: string[]) => deleteAtencionItems({ data: { itemIds } }),
+    onSuccess: (r: { count: number }) => {
+      toast.success(`${r.count} prestaciones eliminadas`);
+      setSelected(new Set());
+      qc.invalidateQueries({ queryKey: ["prestaciones"] });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const toggleSel = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  const allVisibleSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.id));
+  const toggleAllVisible = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) filtered.forEach((r) => next.delete(r.id));
+      else filtered.forEach((r) => next.add(r.id));
+      return next;
+    });
+
   const updateMut = useMutation({
     mutationFn: async (p: Prestacion) => {
       await updateAtencionItem({
-        data: { itemId: p.id, cantidad: p.cantidad, monto: p.monto, montoUsd: p.monto_usd },
+        data: {
+          itemId: p.id,
+          cantidad: p.cantidad,
+          monto: p.monto,
+          montoPaciente: p.monto_paciente,
+          montoUsd: p.monto_usd,
+        },
       });
       await updateAtencionCabecera({
         data: {
           atencionId: p.atencion_id,
+          fecha: p.fecha,
           paciente: p.paciente,
           dni: p.dni,
+          pisoId: p.piso_id,
+          primeraVez: p.primera_vez,
           observaciones: p.observaciones,
         },
       });
@@ -172,12 +218,27 @@ function PrestacionesList() {
           <h1 className="text-2xl font-bold">Prestaciones</h1>
           <p className="text-sm text-muted-foreground">Buscar, editar y eliminar registros.</p>
         </div>
-        <Button asChild>
-          <Link to="/gestion/prestaciones/nueva">
-            <Plus className="h-4 w-4 mr-2" />
-            Nueva prestación
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          {selected.size > 0 && (
+            <Button
+              variant="destructive"
+              disabled={bulkDelMut.isPending}
+              onClick={() => {
+                if (confirm(`¿Eliminar ${selected.size} prestaciones seleccionadas?`))
+                  bulkDelMut.mutate([...selected]);
+              }}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Eliminar seleccionadas ({selected.size})
+            </Button>
+          )}
+          <Button asChild>
+            <Link to="/gestion/prestaciones/nueva">
+              <Plus className="h-4 w-4 mr-2" />
+              Nueva prestación
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -277,6 +338,15 @@ function PrestacionesList() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 align-middle"
+                    checked={allVisibleSelected}
+                    onChange={toggleAllVisible}
+                    aria-label="Seleccionar todo"
+                  />
+                </TableHead>
                 <TableHead>Fecha</TableHead>
                 <TableHead>Paciente</TableHead>
                 <TableHead>DNI</TableHead>
@@ -295,20 +365,29 @@ function PrestacionesList() {
             <TableBody>
               {isLoading && (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">
                     Cargando…
                   </TableCell>
                 </TableRow>
               )}
               {!isLoading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">
                     Sin resultados.
                   </TableCell>
                 </TableRow>
               )}
               {filtered.map((r) => (
-                <TableRow key={r.id}>
+                <TableRow key={r.id} data-state={selected.has(r.id) ? "selected" : undefined}>
+                  <TableCell>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 align-middle"
+                      checked={selected.has(r.id)}
+                      onChange={() => toggleSel(r.id)}
+                      aria-label="Seleccionar fila"
+                    />
+                  </TableCell>
                   <TableCell className="whitespace-nowrap">{r.fecha}</TableCell>
                   <TableCell className="font-medium">{r.paciente}</TableCell>
                   <TableCell>{r.dni}</TableCell>
@@ -357,6 +436,23 @@ function PrestacionesList() {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <Label>Fecha</Label>
+                  <Input
+                    type="date"
+                    value={editing.fecha}
+                    onChange={(e) => setEditing({ ...editing, fecha: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Piso</Label>
+                  <Combobox
+                    options={pisos.map((p: any) => ({ value: p.id, label: p.nombre }))}
+                    value={editing.piso_id ?? ""}
+                    onChange={(v) => setEditing({ ...editing, piso_id: v || null })}
+                    placeholder="Elegir…"
+                  />
+                </div>
+                <div>
                   <Label>Paciente</Label>
                   <Input
                     value={editing.paciente}
@@ -390,6 +486,22 @@ function PrestacionesList() {
                   />
                 </div>
                 <div>
+                  <Label>Copago</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="A cargo del paciente"
+                    value={editing.monto_paciente ?? ""}
+                    onChange={(e) =>
+                      setEditing({
+                        ...editing,
+                        monto_paciente: e.target.value === "" ? null : Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div>
                   <Label>Monto USD</Label>
                   <Input
                     type="number"
@@ -412,6 +524,15 @@ function PrestacionesList() {
                   onChange={(e) => setEditing({ ...editing, observaciones: e.target.value })}
                 />
               </div>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={editing.primera_vez}
+                  onChange={(e) => setEditing({ ...editing, primera_vez: e.target.checked })}
+                />
+                <span className="text-sm">Primera vez (paciente nuevo)</span>
+              </label>
             </div>
           )}
           <DialogFooter>

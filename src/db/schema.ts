@@ -161,6 +161,32 @@ export const nomencladores = pgTable(
   }),
 );
 
+// Historial de cambios de precio (snapshot reversible de cada import/actualización masiva).
+export const nomencladorPriceHistory = pgTable(
+  "nomenclador_price_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    nomencladorId: uuid("nomenclador_id").references(() => nomencladores.id, {
+      onDelete: "set null",
+    }),
+    obraSocialId: uuid("obra_social_id").references(() => obrasSociales.id, { onDelete: "cascade" }),
+    codigo: text("codigo").notNull(),
+    plan: text("plan"),
+    montoOld: numeric("monto_old", { precision: 12, scale: 2 }),
+    montoNew: numeric("monto_new", { precision: 12, scale: 2 }),
+    copagoOld: numeric("copago_old", { precision: 12, scale: 2 }),
+    copagoNew: numeric("copago_new", { precision: 12, scale: 2 }),
+    actorUserId: text("actor_user_id"),
+    actorNombre: text("actor_nombre"),
+    source: text("source").notNull().default("import"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    nphOsIdx: index("idx_nph_os").on(t.obraSocialId),
+    nphCreatedIdx: index("idx_nph_created").on(t.createdAt),
+  }),
+);
+
 // Catálogo de servicios particulares (precio en USD), lista aparte de obras sociales
 export const serviciosParticulares = pgTable("servicios_particulares", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -245,6 +271,9 @@ export const atencionItems = pgTable(
     descripcionManual: text("descripcion_manual"),
     cantidad: integer("cantidad").notNull().default(1),
     monto: numeric("monto", { precision: 12, scale: 2 }).notNull().default("0"),
+    // Copago a cargo del paciente (snapshot del nomenclador al cargar; editable).
+    // Facturación a la obra social = monto - montoPaciente. null = sin desglose de copago.
+    montoPaciente: numeric("monto_paciente", { precision: 12, scale: 2 }),
     montoUsd: numeric("monto_usd", { precision: 12, scale: 2 }),
     cotizacionUsd: numeric("cotizacion_usd", { precision: 12, scale: 2 }),
     // Para reportes de trabajos no facturables (pruebas, escaneos, impresiones).

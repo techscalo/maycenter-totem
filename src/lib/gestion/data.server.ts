@@ -8,6 +8,7 @@ import {
   obrasSociales,
   odontologos,
   nomencladores,
+  nomencladorPriceHistory,
   serviciosParticulares,
   atenciones,
   atencionItems,
@@ -22,6 +23,8 @@ import {
 } from "@/lib/gestion/session.server";
 import { logAudit } from "@/lib/gestion/audit";
 import { isValidDni, normalizeDni } from "@/lib/dni";
+import { SUBTIPO_VALUES } from "@/lib/gestion/codigos";
+import { parsePdfToCanonical } from "@/lib/gestion/nomenclador-parse.server";
 
 // DNI obligatorio + validación de formato (6 a 9 dígitos), compartido por las cargas con paciente.
 const dniField = z
@@ -214,9 +217,11 @@ export const listPrestaciones = createServerFn({ method: "GET" })
         dni: atenciones.dni,
         codigo_consulta: atenciones.codigoConsulta,
         primera_vez: atenciones.primeraVez,
+        piso_id: atenciones.pisoId,
         observaciones: atenciones.observaciones,
         cantidad: atencionItems.cantidad,
         monto: atencionItems.monto,
+        monto_paciente: atencionItems.montoPaciente,
         monto_usd: atencionItems.montoUsd,
         facturable: atencionItems.facturable,
         estado_placa: atencionItems.estadoPlaca,
@@ -257,8 +262,10 @@ export const listPrestaciones = createServerFn({ method: "GET" })
       dni: r.dni,
       codigo_consulta: r.codigo_consulta,
       primera_vez: r.primera_vez,
+      piso_id: r.piso_id,
       cantidad: r.cantidad,
       monto: Number(r.monto),
+      monto_paciente: r.monto_paciente === null ? null : Number(r.monto_paciente),
       monto_usd: r.monto_usd === null ? null : Number(r.monto_usd),
       facturable: r.facturable,
       estado_placa: r.estado_placa,
@@ -284,10 +291,11 @@ const itemInput = z.object({
   descripcionManual: z.string().nullable().optional(),
   cantidad: z.number().int().positive().default(1),
   monto: z.number().min(0).default(0),
+  montoPaciente: z.number().min(0).nullable().optional(),
   montoUsd: z.number().min(0).nullable().optional(),
   cotizacionUsd: z.number().min(0).nullable().optional(),
   facturable: z.boolean().default(true),
-  estadoPlaca: z.enum(["impresion", "entrega", "reimpresion"]).nullable().optional(),
+  estadoPlaca: z.enum(SUBTIPO_VALUES).nullable().optional(),
 });
 
 export const createAtencion = createServerFn({ method: "POST" })
@@ -342,6 +350,10 @@ export const createAtencion = createServerFn({ method: "POST" })
         descripcionManual: it.descripcionManual?.trim() || null,
         cantidad: it.cantidad,
         monto: String(it.monto),
+        montoPaciente:
+          it.montoPaciente === null || it.montoPaciente === undefined
+            ? null
+            : String(it.montoPaciente),
         montoUsd: it.montoUsd === null || it.montoUsd === undefined ? null : String(it.montoUsd),
         cotizacionUsd:
           it.cotizacionUsd === null || it.cotizacionUsd === undefined
@@ -402,9 +414,10 @@ export const updateAtencionItem = createServerFn({ method: "POST" })
         itemId: z.string().uuid(),
         cantidad: z.number().int().positive().optional(),
         monto: z.number().min(0).optional(),
+        montoPaciente: z.number().min(0).nullable().optional(),
         montoUsd: z.number().min(0).nullable().optional(),
         facturable: z.boolean().optional(),
-        estadoPlaca: z.enum(["impresion", "entrega", "reimpresion"]).nullable().optional(),
+        estadoPlaca: z.enum(SUBTIPO_VALUES).nullable().optional(),
       })
       .parse(i),
   )
@@ -416,6 +429,9 @@ export const updateAtencionItem = createServerFn({ method: "POST" })
       .set({
         ...(data.cantidad !== undefined ? { cantidad: data.cantidad } : {}),
         ...(data.monto !== undefined ? { monto: String(data.monto) } : {}),
+        ...(data.montoPaciente !== undefined
+          ? { montoPaciente: data.montoPaciente === null ? null : String(data.montoPaciente) }
+          : {}),
         ...(data.montoUsd !== undefined
           ? { montoUsd: data.montoUsd === null ? null : String(data.montoUsd) }
           : {}),
@@ -464,13 +480,46 @@ export const deleteAtencionItem = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const deleteAtencionItems = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z.object({ itemIds: z.array(z.string().uuid()).min(1).max(500) }).parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    requirePermission(ctx, "prestaciones", "delete");
+    // atenciones afectadas, para limpiar cabeceras que queden sin ítems
+    const afectadas = await db
+      .selectDistinct({ atencionId: atencionItems.atencionId })
+      .from(atencionItems)
+      .where(inArray(atencionItems.id, data.itemIds));
+    await db.delete(atencionItems).where(inArray(atencionItems.id, data.itemIds));
+    for (const { atencionId } of afectadas) {
+      const rest = await db
+        .select({ id: atencionItems.id })
+        .from(atencionItems)
+        .where(eq(atencionItems.atencionId, atencionId))
+        .limit(1);
+      if (!rest.length) {
+        await db.delete(atenciones).where(eq(atenciones.id, atencionId));
+      }
+    }
+    await logAudit(ctx, {
+      action: "delete",
+      resource: "prestacion",
+      resumen: `Borró ${data.itemIds.length} ítems de prestación en lote`,
+    });
+    return { ok: true, count: data.itemIds.length };
+  });
+
 export const updateAtencionCabecera = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) =>
     z
       .object({
         atencionId: z.string().uuid(),
+        fecha: z.string().optional(),
         paciente: z.string().min(1).optional(),
         dni: dniField.optional(),
+        pisoId: z.string().uuid().nullable().optional(),
         observaciones: z.string().nullable().optional(),
         codigoConsulta: z.string().nullable().optional(),
         primeraVez: z.boolean().optional(),
@@ -483,8 +532,10 @@ export const updateAtencionCabecera = createServerFn({ method: "POST" })
     await db
       .update(atenciones)
       .set({
+        ...(data.fecha !== undefined ? { fecha: data.fecha } : {}),
         ...(data.paciente !== undefined ? { paciente: data.paciente } : {}),
         ...(data.dni !== undefined ? { dni: data.dni } : {}),
+        ...(data.pisoId !== undefined ? { pisoId: data.pisoId } : {}),
         ...(data.observaciones !== undefined ? { observaciones: data.observaciones } : {}),
         ...(data.codigoConsulta !== undefined ? { codigoConsulta: data.codigoConsulta } : {}),
         ...(data.primeraVez !== undefined ? { primeraVez: data.primeraVez } : {}),
@@ -768,6 +819,230 @@ export const deleteNomenclador = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// ---- Importación / actualización masiva de nomencladores ----------------------
+// Fila canónica del documento (la OS se elige en la UI, no viene en el archivo).
+const nomencladorImportRow = z.object({
+  codigo: z.string().trim().min(1),
+  plan: z.string().trim().nullable().optional(),
+  descripcion: z.string().trim().optional(),
+  monto: z.number().min(0),
+  copago: z.number().min(0).nullable().optional(),
+});
+
+const DELTA_WARN = 0.5; // ±50%: variación sospechosa (marca warning, no bloquea)
+const keyOf = (plan: string | null | undefined, codigo: string) =>
+  `${(plan ?? "").trim()}::${codigo.trim()}`;
+const eqNum = (a: number | null, b: number | null) =>
+  (a == null && b == null) || (a != null && b != null && Math.abs(a - b) < 0.01);
+
+type ImportWarning = { codigo: string; plan: string | null; issue: string };
+
+// Cruza las filas del documento contra la DB de la OS y arma el diff. No escribe.
+async function buildImportDiff(obraSocialId: string, rows: unknown[]) {
+  const warnings: ImportWarning[] = [];
+  const parsed: z.infer<typeof nomencladorImportRow>[] = [];
+  const seen = new Set<string>();
+  for (const raw of rows) {
+    const r = nomencladorImportRow.safeParse(raw);
+    if (!r.success) {
+      warnings.push({ codigo: String((raw as any)?.codigo ?? "?"), plan: null, issue: "fila inválida" });
+      continue;
+    }
+    const k = keyOf(r.data.plan, r.data.codigo);
+    if (seen.has(k)) {
+      warnings.push({ codigo: r.data.codigo, plan: r.data.plan ?? null, issue: "duplicado en el archivo" });
+      continue;
+    }
+    seen.add(k);
+    if (r.data.copago != null && r.data.copago > r.data.monto)
+      warnings.push({ codigo: r.data.codigo, plan: r.data.plan ?? null, issue: "copago mayor al monto" });
+    parsed.push(r.data);
+  }
+
+  const dbRows = await db
+    .select()
+    .from(nomencladores)
+    .where(eq(nomencladores.obraSocialId, obraSocialId));
+  const dbByKey = new Map(dbRows.map((r) => [keyOf(r.plan, r.codigo), r]));
+  const fileKeys = new Set(parsed.map((p) => keyOf(p.plan, p.codigo)));
+
+  const toUpdate: {
+    id: string;
+    codigo: string;
+    plan: string | null;
+    montoOld: number;
+    montoNew: number;
+    copagoOld: number | null;
+    copagoNew: number | null;
+  }[] = [];
+  const toCreate: {
+    codigo: string;
+    plan: string | null;
+    descripcion: string;
+    monto: number;
+    copago: number | null;
+  }[] = [];
+  let unchanged = 0;
+
+  for (const row of parsed) {
+    const cur = dbByKey.get(keyOf(row.plan, row.codigo));
+    const newCopago = row.copago ?? null;
+    if (!cur) {
+      toCreate.push({
+        codigo: row.codigo,
+        plan: row.plan ?? null,
+        descripcion: row.descripcion ?? row.codigo,
+        monto: row.monto,
+        copago: newCopago,
+      });
+      continue;
+    }
+    const oldMonto = Number(cur.monto);
+    const oldCopago = cur.montoPaciente == null ? null : Number(cur.montoPaciente);
+    if (eqNum(oldMonto, row.monto) && eqNum(oldCopago, newCopago)) {
+      unchanged++;
+      continue;
+    }
+    if (row.monto === 0) warnings.push({ codigo: row.codigo, plan: row.plan ?? null, issue: "monto 0" });
+    else if (oldMonto > 0) {
+      const d = (row.monto - oldMonto) / oldMonto;
+      if (Math.abs(d) > DELTA_WARN)
+        warnings.push({ codigo: row.codigo, plan: row.plan ?? null, issue: `variación ${(d * 100).toFixed(0)}%` });
+    }
+    toUpdate.push({
+      id: cur.id,
+      codigo: row.codigo,
+      plan: row.plan ?? null,
+      montoOld: oldMonto,
+      montoNew: row.monto,
+      copagoOld: oldCopago,
+      copagoNew: newCopago,
+    });
+  }
+  const missingInFile = dbRows
+    .filter((r) => !fileKeys.has(keyOf(r.plan, r.codigo)))
+    .map((r) => ({ codigo: r.codigo, plan: r.plan }));
+
+  return {
+    toUpdate,
+    toCreate,
+    unchanged,
+    missingInFile,
+    warnings,
+    dbCount: dbRows.length,
+    fileCount: parsed.length,
+  };
+}
+
+export const previewNomencladorImport = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z.object({ obraSocialId: z.string().uuid(), rows: z.array(z.unknown()).max(5000) }).parse(i),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    return buildImportDiff(data.obraSocialId, data.rows);
+  });
+
+export const applyNomencladorImport = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        obraSocialId: z.string().uuid(),
+        rows: z.array(z.unknown()).max(5000),
+        createMissing: z.boolean().default(false),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAdmin();
+    const diff = await buildImportDiff(data.obraSocialId, data.rows);
+
+    const stmts: unknown[] = [];
+    const history: (typeof nomencladorPriceHistory.$inferInsert)[] = [];
+    for (const u of diff.toUpdate) {
+      stmts.push(
+        db
+          .update(nomencladores)
+          .set({
+            monto: String(u.montoNew),
+            montoPaciente: u.copagoNew == null ? null : String(u.copagoNew),
+          })
+          .where(eq(nomencladores.id, u.id)),
+      );
+      history.push({
+        nomencladorId: u.id,
+        obraSocialId: data.obraSocialId,
+        codigo: u.codigo,
+        plan: u.plan,
+        montoOld: String(u.montoOld),
+        montoNew: String(u.montoNew),
+        copagoOld: u.copagoOld == null ? null : String(u.copagoOld),
+        copagoNew: u.copagoNew == null ? null : String(u.copagoNew),
+        actorUserId: ctx.userId,
+        source: "import",
+      });
+    }
+    let created = 0;
+    if (data.createMissing) {
+      for (const c of diff.toCreate) {
+        const id = crypto.randomUUID();
+        stmts.push(
+          db.insert(nomencladores).values({
+            id,
+            obraSocialId: data.obraSocialId,
+            plan: c.plan,
+            codigo: c.codigo,
+            descripcion: c.descripcion,
+            monto: String(c.monto),
+            montoPaciente: c.copago == null ? null : String(c.copago),
+          }),
+        );
+        history.push({
+          nomencladorId: id,
+          obraSocialId: data.obraSocialId,
+          codigo: c.codigo,
+          plan: c.plan,
+          montoNew: String(c.monto),
+          copagoNew: c.copago == null ? null : String(c.copago),
+          actorUserId: ctx.userId,
+          source: "import-create",
+        });
+        created++;
+      }
+    }
+    if (history.length) stmts.push(db.insert(nomencladorPriceHistory).values(history));
+    if (stmts.length) await db.batch(stmts as [any, ...any[]]);
+
+    await logAudit(ctx, {
+      action: "update",
+      resource: "precio",
+      resumen: `Import masivo: ${diff.toUpdate.length} actualizados${created ? `, ${created} nuevos` : ""}`,
+      meta: { obraSocialId: data.obraSocialId, updated: diff.toUpdate.length, created, unchanged: diff.unchanged },
+    });
+    return { updated: diff.toUpdate.length, created, unchanged: diff.unchanged, warnings: diff.warnings.length };
+  });
+
+// Sube el PDF crudo (base64), lo parsea server-side y devuelve el mismo diff que el
+// import por CSV, más el arquetipo detectado y las filas canónicas (que el cliente
+// reenvía a applyNomencladorImport al confirmar). No escribe nada.
+export const previewNomencladorImportPdf = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        obraSocialId: z.string().uuid(),
+        fileBase64: z.string().min(1),
+        archetype: z.enum(["flat-ars", "flat-dotted", "matrix-plans"]).optional(),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const bytes = Uint8Array.from(atob(data.fileBase64), (c) => c.charCodeAt(0));
+    const { archetype, rows, parseWarnings } = await parsePdfToCanonical(bytes, data.archetype);
+    const diff = await buildImportDiff(data.obraSocialId, rows);
+    return { archetype, rows, parseWarnings, ...diff };
+  });
+
 // Listado completo (incluye inactivos) para la pantalla de Precios. Solo lectura,
 // así que basta con estar autenticado; la edición sigue siendo admin.
 export const listNomencladoresAdmin = createServerFn({ method: "GET" })
@@ -821,20 +1096,35 @@ export const createServicioParticular = createServerFn({ method: "POST" })
 
 export const updateServicioParticular = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) =>
-    z.object({ id: z.string().uuid(), precioUsd: z.number().min(0) }).parse(i),
+    z
+      .object({
+        id: z.string().uuid(),
+        codigo: z.string().trim().nullable().optional(),
+        descripcion: z.string().trim().min(1).optional(),
+        precioUsd: z.number().min(0).optional(),
+      })
+      .parse(i),
   )
   .handler(async ({ data }) => {
     const ctx = await requireAdmin();
+    const set: Record<string, unknown> = {};
+    if (data.codigo !== undefined) set.codigo = data.codigo?.trim() || null;
+    if (data.descripcion !== undefined) set.descripcion = data.descripcion.trim();
+    if (data.precioUsd !== undefined) set.precioUsd = String(data.precioUsd);
+    if (Object.keys(set).length === 0) return { ok: true };
     await db
       .update(serviciosParticulares)
-      .set({ precioUsd: String(data.precioUsd) })
+      .set(set)
       .where(eq(serviciosParticulares.id, data.id));
     await logAudit(ctx, {
       action: "update",
       resource: "precio",
       entityId: data.id,
-      resumen: `Actualizó precio particular a USD ${data.precioUsd}`,
-      meta: { tipo: "particular" },
+      resumen:
+        data.precioUsd !== undefined
+          ? `Actualizó precio particular a USD ${data.precioUsd}`
+          : "Editó un servicio particular",
+      meta: { tipo: "particular", ...data },
     });
     return { ok: true };
   });
