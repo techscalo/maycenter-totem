@@ -316,6 +316,7 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
       telefono: turnosManuales.telefono,
       motivo: turnosManuales.motivo,
       estado: turnosManuales.estado,
+      tieneFicha: turnosManuales.tieneFicha,
       llegadaAt: turnosManuales.llegadaAt,
       salaAt: turnosManuales.salaAt,
       obraSocial: obrasSociales.nombre,
@@ -325,14 +326,17 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
     .leftJoin(obrasSociales, eq(turnosManuales.obraSocialId, obrasSociales.id))
     .leftJoin(odontologos, eq(turnosManuales.odontologoId, odontologos.id))
     .where(and(eq(turnosManuales.sucursalId, sucursalId), eq(turnosManuales.fecha, fecha)));
-  return rows.map((m) => ({
+  return rows.map((m) => {
+    // ST (sin hora): se ordena por su hora de llegada para intercalarse con los que tienen turno.
+    const horaOrden = m.hora ?? (m.llegadaAt ? hhmmAR(new Date(m.llegadaAt)) : "00:00");
+    return {
     tipo: "manual" as const,
     rowId: `manual:${m.id}`,
     id: m.id as string | null,
     eventId: null as string | null,
     contactId: null as string | null,
     hora: m.hora,
-    startTime: `${m.fecha}T${m.hora}:00`,
+    startTime: `${m.fecha}T${horaOrden}:00`,
     paciente: m.paciente,
     pacienteContacto: "—" as string | null,
     descripcion: null as string | null,
@@ -340,7 +344,7 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
     telefono: m.telefono,
     obraSocial: m.obraSocial,
     observaciones: m.motivo,
-    ficha: null as string | null,
+    ficha: m.tieneFicha as string | null,
     profesional: m.profesional ?? "—",
     motivo: m.motivo,
     estadoGhl: null as string | null,
@@ -352,7 +356,8 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
     salaHora: m.salaAt ? hhmmAR(new Date(m.salaAt)) : null,
     contactoUrl: null as string | null,
     estado: m.estado,
-  }));
+    };
+  });
 }
 
 export const getTurnosDelDia = createServerFn({ method: "GET" })
@@ -637,7 +642,12 @@ export const crearTurnoManual = createServerFn({ method: "POST" })
       .object({
         sucursalId: z.string().uuid(),
         fecha: z.string(),
-        hora: z.string().regex(/^\d{2}:\d{2}$/, "Hora inválida"),
+        // null = ST (sin turno): urgencia sin horario, se atiende por orden de llegada.
+        hora: z
+          .string()
+          .regex(/^\d{2}:\d{2}$/, "Hora inválida")
+          .optional()
+          .nullable(),
         pacienteNombre: z.string().trim().min(1, "Falta el nombre del paciente"),
         dni: dniField,
         telefono: z.string().trim().optional().nullable(),
@@ -657,13 +667,15 @@ export const crearTurnoManual = createServerFn({ method: "POST" })
       .values({
         sucursalId: data.sucursalId,
         fecha: data.fecha,
-        hora: data.hora,
+        hora: data.hora || null,
         pacienteNombre: data.pacienteNombre.trim(),
         dni: data.dni,
         telefono: data.telefono?.trim() || null,
         obraSocialId: data.obraSocialId || null,
         odontologoId: data.odontologoId || null,
         motivo: data.motivo?.trim() || null,
+        // El manual se carga con el paciente presente: se estampa la llegada al crear.
+        llegadaAt: new Date(),
         marcadoPor: ctx.userId,
         createdBy: ctx.userId,
       })
@@ -672,7 +684,7 @@ export const crearTurnoManual = createServerFn({ method: "POST" })
       action: "create",
       resource: "turno_manual",
       entityId: row.id,
-      resumen: `Cargó turno manual de ${data.pacienteNombre.trim()} (DNI ${data.dni}) ${data.fecha} ${data.hora}`,
+      resumen: `Cargó turno manual de ${data.pacienteNombre.trim()} (DNI ${data.dni}) ${data.fecha} ${data.hora || "ST"}`,
       sucursalId: data.sucursalId,
     });
     return { ok: true, id: row.id };
@@ -712,6 +724,36 @@ export const marcarEstadoTurnoManual = createServerFn({ method: "POST" })
       resource: "turno_manual",
       entityId: data.id,
       resumen: `Marcó turno manual: ${ESTADO_LABEL[data.estado] ?? data.estado}`,
+      sucursalId: t.sucursalId,
+    });
+    return { ok: true };
+  });
+
+// Marca la ficha (Tiene Ficha / No tiene ficha) de un turno manual. Local, sin GHL.
+export const actualizarFichaManual = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z.object({ id: z.string().uuid(), valor: z.enum(FICHA_VALORES) }).parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    const [t] = await db
+      .select({ sucursalId: turnosManuales.sucursalId })
+      .from(turnosManuales)
+      .where(eq(turnosManuales.id, data.id))
+      .limit(1);
+    if (!t) throw new Error("Turno no encontrado");
+    if (!ctx.sucursalIds.includes(t.sucursalId)) {
+      throw new Error("No tenés acceso a esa sucursal");
+    }
+    await db
+      .update(turnosManuales)
+      .set({ tieneFicha: data.valor, updatedAt: new Date() })
+      .where(eq(turnosManuales.id, data.id));
+    await logAudit(ctx, {
+      action: "update",
+      resource: "ficha",
+      entityId: data.id,
+      resumen: `Marcó ficha (manual): ${data.valor}`,
       sucursalId: t.sucursalId,
     });
     return { ok: true };

@@ -10,6 +10,7 @@ import {
   crearTurnoManual,
   eliminarTurnoManual,
   actualizarFichaContacto,
+  actualizarFichaManual,
 } from "@/lib/gestion/ghl.server";
 import { listOdontologos, listObrasSociales, getPacienteByDni } from "@/lib/gestion/data.server";
 import { isValidDni, DNI_ERROR } from "@/lib/dni";
@@ -183,9 +184,11 @@ export function TurnosDelDia() {
 
   const cambiarFicha = useMutation({
     mutationFn: (v: { row: any; valor: string }) =>
-      actualizarFichaContacto({
-        data: { sucursalId, contactId: v.row.contactId, valor: v.valor } as any,
-      }),
+      v.row.tipo === "manual"
+        ? actualizarFichaManual({ data: { id: v.row.id, valor: v.valor } as any })
+        : actualizarFichaContacto({
+            data: { sucursalId, contactId: v.row.contactId, valor: v.valor } as any,
+          }),
     onMutate: async (v) => {
       await qc.cancelQueries({ queryKey });
       const prev = qc.getQueryData<any>(queryKey);
@@ -422,7 +425,16 @@ export function TurnosDelDia() {
                   return (
                     <TableRow key={t.rowId} className={est?.row ?? ""}>
                       {show("hora") && (
-                        <TableCell className="font-semibold tabular-nums">{t.hora}</TableCell>
+                        <TableCell className="font-semibold tabular-nums">
+                          {t.hora ?? (
+                            <Badge
+                              variant="secondary"
+                              title="Sin turno (se atiende por orden de llegada)"
+                            >
+                              ST
+                            </Badge>
+                          )}
+                        </TableCell>
                       )}
                       {show("llegada") && (
                         <TableCell className="tabular-nums text-sm">
@@ -489,22 +501,18 @@ export function TurnosDelDia() {
                       )}
                       {show("tieneFicha") && (
                         <TableCell>
-                          {t.tipo === "manual" ? (
-                            <span className="text-sm text-muted-foreground">—</span>
-                          ) : (
-                            <Select
-                              value={t.ficha ?? undefined}
-                              onValueChange={(v) => cambiarFicha.mutate({ row: t, valor: v })}
-                            >
-                              <SelectTrigger className="h-8 w-36">
-                                <SelectValue placeholder="Sin definir" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Tiene Ficha">Tiene Ficha</SelectItem>
-                                <SelectItem value="No tiene ficha">No tiene ficha</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          )}
+                          <Select
+                            value={t.ficha ?? undefined}
+                            onValueChange={(v) => cambiarFicha.mutate({ row: t, valor: v })}
+                          >
+                            <SelectTrigger className="h-8 w-36">
+                              <SelectValue placeholder="Sin definir" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Tiene Ficha">Tiene Ficha</SelectItem>
+                              <SelectItem value="No tiene ficha">No tiene ficha</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                       )}
                       {show("estado") && (
@@ -583,6 +591,7 @@ function NuevoTurnoDialog({
   onCreated: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [st, setSt] = useState(false);
   const [form, setForm] = useState({
     fecha,
     hora: "",
@@ -635,7 +644,7 @@ function NuevoTurnoDialog({
         data: {
           sucursalId,
           fecha: form.fecha,
-          hora: form.hora,
+          hora: st ? null : form.hora,
           pacienteNombre: form.pacienteNombre.trim(),
           dni: form.dni.trim(),
           telefono: form.telefono.trim() || null,
@@ -647,6 +656,7 @@ function NuevoTurnoDialog({
     onSuccess: () => {
       toast.success("Turno cargado");
       setOpen(false);
+      setSt(false);
       setForm({
         fecha,
         hora: "",
@@ -664,7 +674,7 @@ function NuevoTurnoDialog({
 
   const dniOk = isValidDni(form.dni);
   const puedeGuardar =
-    !!sucursalId && !!form.hora && !!form.pacienteNombre.trim() && dniOk && !crear.isPending;
+    !!sucursalId && (st || !!form.hora) && !!form.pacienteNombre.trim() && dniOk && !crear.isPending;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -684,7 +694,21 @@ function NuevoTurnoDialog({
           </div>
           <div>
             <Label className="text-xs">Hora</Label>
-            <Input type="time" value={form.hora} onChange={(e) => set("hora", e.target.value)} />
+            <Input
+              type="time"
+              value={st ? "" : form.hora}
+              onChange={(e) => set("hora", e.target.value)}
+              disabled={st}
+            />
+            <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={st}
+                onChange={(e) => setSt(e.target.checked)}
+                className="h-3.5 w-3.5 accent-primary"
+              />
+              Sin turno (ST) — se atiende por orden de llegada
+            </label>
           </div>
           <div>
             <Label className="text-xs">DNI</Label>

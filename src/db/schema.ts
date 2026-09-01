@@ -316,10 +316,13 @@ export const turnosManuales = pgTable(
       .notNull()
       .references(() => sucursales.id, { onDelete: "cascade" }),
     fecha: date("fecha").notNull(),
-    hora: text("hora").notNull(), // "HH:MM"
+    // "HH:MM" o null = ST (sin turno: urgencia sin horario, se atiende por orden de llegada).
+    hora: text("hora"),
     pacienteNombre: text("paciente_nombre").notNull(),
     dni: text("dni").notNull(),
     telefono: text("telefono"),
+    // Ficha del paciente para turnos manuales (los de GHL la tienen en el contacto).
+    tieneFicha: text("tiene_ficha"),
     obraSocialId: uuid("obra_social_id").references(() => obrasSociales.id, {
       onDelete: "set null",
     }),

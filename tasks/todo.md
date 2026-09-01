@@ -278,3 +278,45 @@ Decisiones: espejo bidireccional de estados; showed→Finalizado / noshow→Ause
 - [ ] Verificar en navegador (dev 8080): marcar estados y ver reflejo en GHL; columna Observaciones con un contacto que tenga el campo cargado.
 - [ ] Commit + deploy a `main` cuando Dylan valide.
 - [ ] (Opcional) actualizar página de Ayuda con la sync de estados y la columna Observaciones.
+
+---
+
+# Tanda Recepción 3 (01/09/2026) — feedback Julián (ingreso manual)
+
+Feedback en Notion "MY - Agregar cambios a sistema administracion Maycenter". Todo aplica a
+turnos de **ingreso manual** en "Turnos del día". Decisiones Dylan: `llegada_at` del manual se
+estampa **al crear**; los ST se ordenan **intercalados** por hora.
+
+## Cambio 1 — Turno "ST" (sin turno / urgencia sin horario) ✅
+- [x] Schema: `turnos_manuales.hora` → nullable.
+- [x] `crearTurnoManual`: `hora` opcional (null = ST); estampar `llegada_at = now()` al crear.
+- [x] Diálogo: checkbox "Sin turno (ST)" que anula/deshabilita la hora.
+- [x] Grilla: badge "ST" en columna Hora cuando `hora` es null; orden intercalado (ST usa
+      hora de llegada como clave de orden en `startTime`).
+
+## Cambio 2 — Ficha editable en manuales ✅
+- [x] Schema: `turnos_manuales.tiene_ficha text`.
+- [x] `cargarTurnosManuales`: devuelve `ficha` real; nueva fn `actualizarFichaManual`.
+- [x] Grilla: Select "Tiene Ficha / No tiene ficha" también para `tipo === 'manual'`
+      (mutación `cambiarFicha` bifurca por tipo).
+
+## Cambio 3 — Bug: al finalizar se pisa la hora de llegada ✅
+- Raíz: el manual nunca pasaba por `en_recepcion`, así que `llegada_at` quedaba null y se veía
+  raro al finalizar. Resuelto estampando `llegada_at` al crear (Cambio 1); el `coalesce`
+  existente evita el pisado. **Verificar que prod corra el build actual** (con el coalesce).
+
+## Migración ✅
+- [x] `0018_turnos_manuales_st_ficha.sql` (idempotente) aplicada (DB compartida = ya impactó prod).
+
+## Verificación ✅
+- [x] `tsc --noEmit` limpio + `npm run build` OK.
+- [x] Prueba DB del flujo: crear ST (hora null) + llegada al crear → En sala → Finalizado
+      **no pisa** llegada; ficha se guarda. Fila de prueba (fecha 1990) eliminada.
+- [ ] Verificación en navegador con Julián/Jota (crear ST, marcar ficha, finalizar).
+- [ ] Deploy a `main` cuando Dylan valide.
+
+## Resultado
+Código + migración completos, build/typecheck OK, flujo verificado contra la DB. Archivos:
+`src/db/schema.ts`, `drizzle/0018_turnos_manuales_st_ficha.sql`,
+`src/lib/gestion/ghl.server.ts`, `src/components/gestion/TurnosDelDia.tsx`.
+Pendiente: validación en navegador + deploy.
