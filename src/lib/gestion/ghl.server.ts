@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/db/client";
 import {
   sucursales,
@@ -162,7 +163,45 @@ async function updateContactField(cfg: GhlConfig, contactId: string, fieldId: st
   if (!res.ok) throw new Error(`No se pudo actualizar el contacto en GHL (${res.status})`);
 }
 
+// Actualiza el contacto en GHL con un body arbitrario (datos base + custom fields).
+async function updateContactFull(cfg: GhlConfig, contactId: string, body: Record<string, unknown>) {
+  const res = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${cfg.pit}`,
+      Version: "2021-07-28",
+      "User-Agent": "curl/8.4.0",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`No se pudo actualizar el contacto en GHL (${res.status})`);
+}
+
+// Actualiza una cita en GHL (reprogramación + estado). El body puede incluir calendarId,
+// startTime, endTime, appointmentStatus.
+async function updateAppointmentFull(cfg: GhlConfig, eventId: string, body: Record<string, unknown>) {
+  const res = await fetch(`${GHL_BASE}/calendars/events/appointments/${eventId}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${cfg.pit}`,
+      Version: "2021-04-15",
+      "User-Agent": "curl/8.4.0",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`No se pudo actualizar el turno en GHL (${res.status})`);
+}
+
 const onlyDigits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
+
+// "HH:MM" (hora de Argentina) + fecha "YYYY-MM-DD" → Date. "" o null → null (limpia el valor).
+function horaARaDate(fecha: string, hhmm: string | null | undefined): Date | null {
+  const v = (hhmm ?? "").trim();
+  if (!v) return null;
+  return new Date(`${fecha}T${v}:00-03:00`);
+}
 
 // Espejo GHL → sistema: si la cita ya viene marcada en GHL, reflejarlo.
 // showed (asistió) → finalizado; noshow (no asistió) → ausente; el resto no mapea.
@@ -224,6 +263,8 @@ async function listDayEvents(cfg: GhlConfig, fecha: string) {
     .map((e) => ({
       eventId: e.id as string,
       startTime: e.startTime as string,
+      endTime: (e.endTime as string) ?? null,
+      calendarId: e.calendarId as string,
       title: (e.title as string) ?? "",
       descripcion: (e.notes as string) ?? "",
       estadoGhl: (e.appointmentStatus as string) ?? "",
@@ -251,6 +292,9 @@ async function resolveContactos(cfg: GhlConfig, ids: string[]) {
           id,
           {
             nombre,
+            firstName: c.firstName ?? null,
+            lastName: c.lastName ?? null,
+            email: c.email ?? null,
             telefono: c.phone ?? null,
             dni: dniField?.value ?? null,
             obraSocial: osField?.value ?? null,
@@ -263,6 +307,9 @@ async function resolveContactos(cfg: GhlConfig, ids: string[]) {
           id,
           {
             nombre: "—",
+            firstName: null,
+            lastName: null,
+            email: null,
             telefono: null,
             dni: null,
             obraSocial: null,
@@ -313,6 +360,7 @@ const hhmmAR = (d: Date) =>
 // Turnos cargados a mano (sin GHL) de una sucursal/fecha, con el mismo shape que los de GHL
 // para poder fusionarlos en la tabla de Recepción.
 async function cargarTurnosManuales(sucursalId: string, fecha: string) {
+  const odontCargo = alias(odontologos, "odont_cargo");
   const rows = await db
     .select({
       id: turnosManuales.id,
@@ -326,12 +374,19 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
       tieneFicha: turnosManuales.tieneFicha,
       llegadaAt: turnosManuales.llegadaAt,
       salaAt: turnosManuales.salaAt,
+      finalizadoAt: turnosManuales.finalizadoAt,
+      obraSocialId: turnosManuales.obraSocialId,
       obraSocial: obrasSociales.nombre,
+      odontologoId: turnosManuales.odontologoId,
       profesional: odontologos.nombre,
+      odontologoACargoId: turnosManuales.odontologoACargoId,
+      odontologoACargo: odontCargo.nombre,
+      pisoId: turnosManuales.pisoId,
     })
     .from(turnosManuales)
     .leftJoin(obrasSociales, eq(turnosManuales.obraSocialId, obrasSociales.id))
     .leftJoin(odontologos, eq(turnosManuales.odontologoId, odontologos.id))
+    .leftJoin(odontCargo, eq(turnosManuales.odontologoACargoId, odontCargo.id))
     .where(and(eq(turnosManuales.sucursalId, sucursalId), eq(turnosManuales.fecha, fecha)));
   return rows.map((m) => {
     // ST (sin hora): se ordena por su hora de llegada para intercalarse con los que tienen turno.
@@ -342,16 +397,23 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
     id: m.id as string | null,
     eventId: null as string | null,
     contactId: null as string | null,
+    calendarId: null as string | null,
     hora: m.hora,
     startTime: `${m.fecha}T${horaOrden}:00`,
+    endTime: null as string | null,
     paciente: m.paciente,
     pacienteContacto: "—" as string | null,
+    firstName: null as string | null,
+    lastName: null as string | null,
+    email: null as string | null,
     descripcion: null as string | null,
     dni: m.dni,
     telefono: m.telefono,
+    obraSocialId: m.obraSocialId as string | null,
     obraSocial: m.obraSocial,
     observaciones: m.motivo,
     ficha: m.tieneFicha as string | null,
+    odontologoId: m.odontologoId as string | null,
     profesional: m.profesional ?? "—",
     motivo: m.motivo,
     estadoGhl: null as string | null,
@@ -361,6 +423,10 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
     llegadaEstado: null as string | null,
     llegadaHora: m.llegadaAt ? hhmmAR(new Date(m.llegadaAt)) : null,
     salaHora: m.salaAt ? hhmmAR(new Date(m.salaAt)) : null,
+    finalizadoHora: m.finalizadoAt ? hhmmAR(new Date(m.finalizadoAt)) : null,
+    odontologoACargoId: m.odontologoACargoId as string | null,
+    odontologoACargo: m.odontologoACargo as string | null,
+    pisoId: m.pisoId as string | null,
     contactoUrl: null as string | null,
     estado: m.estado,
     };
@@ -412,12 +478,27 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
             eventId: turnoAsistencias.ghlEventId,
             estado: turnoAsistencias.estado,
             salaAt: turnoAsistencias.salaAt,
+            llegadaAt: turnoAsistencias.llegadaAt,
+            finalizadoAt: turnoAsistencias.finalizadoAt,
+            odontologoACargoId: turnoAsistencias.odontologoACargoId,
+            pisoId: turnoAsistencias.pisoId,
           })
           .from(turnoAsistencias)
           .where(inArray(turnoAsistencias.ghlEventId, ids))
       : [];
     const estadoMap = new Map(marcadas.map((m) => [m.eventId, m.estado]));
     const salaMap = new Map(marcadas.map((m) => [m.eventId, m.salaAt]));
+    const finMap = new Map(marcadas.map((m) => [m.eventId, m.finalizadoAt]));
+    const llegadaOverrideMap = new Map(marcadas.map((m) => [m.eventId, m.llegadaAt]));
+    const aCargoMap = new Map(marcadas.map((m) => [m.eventId, m.odontologoACargoId]));
+    const pisoMap = new Map(marcadas.map((m) => [m.eventId, m.pisoId]));
+
+    // Nombres de odontólogos de la sucursal (para resolver el "a cargo" por id).
+    const odontRows = await db
+      .select({ id: odontologos.id, nombre: odontologos.nombre })
+      .from(odontologos)
+      .where(eq(odontologos.sucursalId, data.sucursalId));
+    const odontNombre = new Map(odontRows.map((o) => [o.id, o.nombre]));
 
     // Llegadas del tótem de esa fecha/sucursal, indexadas por DNI (estado + hora de check-in).
     const dayStart = new Date(`${data.fecha}T00:00:00-03:00`);
@@ -447,16 +528,25 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
           estadoMap.get(e.eventId) ??
           (ingresoTotem ? "en_recepcion" : estadoDesdeGhl(e.estadoGhl));
         const salaAt = salaMap.get(e.eventId) ?? null;
+        const finAt = finMap.get(e.eventId) ?? null;
+        const llegadaOverride = llegadaOverrideMap.get(e.eventId) ?? null;
+        const llegadaFecha = llegadaOverride ?? (llegada ? llegada.createdAt : null);
+        const aCargoId = aCargoMap.get(e.eventId) ?? null;
         return {
           tipo: "ghl" as const,
           rowId: `ghl:${e.eventId}`,
           id: e.eventId as string | null,
           eventId: e.eventId as string | null,
           contactId: e.contactId as string | null,
+          calendarId: e.calendarId as string | null,
           hora,
           startTime: e.startTime,
+          endTime: e.endTime,
           paciente: e.title || c?.nombre || "—",
           pacienteContacto: c?.nombre ?? "—",
+          firstName: c?.firstName ?? null,
+          lastName: c?.lastName ?? null,
+          email: c?.email ?? null,
           descripcion: e.descripcion || null,
           dni,
           telefono: c?.telefono ?? null,
@@ -470,8 +560,12 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
           origen: e.origen,
           ingresoTotem,
           llegadaEstado: llegada?.estado ?? null,
-          llegadaHora: llegada ? hhmmAR(new Date(llegada.createdAt)) : null,
+          llegadaHora: llegadaFecha ? hhmmAR(new Date(llegadaFecha)) : null,
           salaHora: salaAt ? hhmmAR(new Date(salaAt)) : null,
+          finalizadoHora: finAt ? hhmmAR(new Date(finAt)) : null,
+          odontologoACargoId: aCargoId,
+          odontologoACargo: aCargoId ? (odontNombre.get(aCargoId) ?? null) : null,
+          pisoId: pisoMap.get(e.eventId) ?? null,
           contactoUrl: `https://app.gohighlevel.com/v2/location/${cfg.locationId}/contacts/detail/${e.contactId}`,
           estado,
         };
@@ -578,9 +672,11 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
         );
       }
     }
-    // Hora de ingreso a sala: se estampa al marcar "En sala" (en_consultorio) y no se pisa
-    // en marcas posteriores (coalesce mantiene la primera).
+    // Hora de ingreso a sala / finalización: se estampan al marcar "En sala" (en_consultorio)
+    // y "Finalizado" respectivamente y no se pisan en marcas posteriores (coalesce mantiene la
+    // primera).
     const salaAhora = data.estado === "en_consultorio" ? new Date() : null;
+    const finAhora = data.estado === "finalizado" ? new Date() : null;
     await db
       .insert(turnoAsistencias)
       .values({
@@ -590,6 +686,7 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
         asistio: data.estado === "finalizado",
         estado: data.estado,
         salaAt: salaAhora,
+        finalizadoAt: finAhora,
         marcadoPor: ctx.userId,
       })
       .onConflictDoUpdate({
@@ -598,6 +695,7 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
           asistio: data.estado === "finalizado",
           estado: data.estado,
           salaAt: sql`coalesce(${turnoAsistencias.salaAt}, ${salaAhora ? salaAhora.toISOString() : null})`,
+          finalizadoAt: sql`coalesce(${turnoAsistencias.finalizadoAt}, ${finAhora ? finAhora.toISOString() : null})`,
           marcadoPor: ctx.userId,
           updatedAt: new Date(),
         },
@@ -607,6 +705,158 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
       resource: "asistencia",
       entityId: data.eventId,
       resumen: `Marcó turno: ${ESTADO_LABEL[data.estado] ?? data.estado}`,
+      sucursalId: data.sucursalId,
+    });
+    return { ok: true };
+  });
+
+// Odontólogo que realmente atendió un turno de GHL (cuando difiere del de la agenda).
+// Guarda un override local en turno_asistencias; null = vuelve al de la agenda.
+export const setOdontologoACargoTurno = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        eventId: z.string().min(1),
+        sucursalId: z.string().uuid(),
+        fecha: z.string(),
+        odontologoACargoId: z.string().uuid().nullable(),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    if (!ctx.sucursalIds.includes(data.sucursalId)) {
+      throw new Error("No tenés acceso a esa sucursal");
+    }
+    await db
+      .insert(turnoAsistencias)
+      .values({
+        ghlEventId: data.eventId,
+        sucursalId: data.sucursalId,
+        fecha: data.fecha,
+        odontologoACargoId: data.odontologoACargoId,
+        marcadoPor: ctx.userId,
+      })
+      .onConflictDoUpdate({
+        target: turnoAsistencias.ghlEventId,
+        set: { odontologoACargoId: data.odontologoACargoId, updatedAt: new Date() },
+      });
+    await logAudit(ctx, {
+      action: "update",
+      resource: "asistencia",
+      entityId: data.eventId,
+      resumen: "Cambió el odontólogo a cargo del turno",
+      sucursalId: data.sucursalId,
+    });
+    return { ok: true };
+  });
+
+// Edición completa de un turno de GHL desde el modal: datos del contacto + custom fields,
+// reprogramación de la cita (start/end en GHL) y campos locales (estado, a cargo, horas).
+export const actualizarTurnoGhl = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        eventId: z.string().min(1),
+        contactId: z.string().min(1),
+        sucursalId: z.string().uuid(),
+        fecha: z.string(),
+        calendarId: z.string().nullable().optional(),
+        firstName: z.string().optional(),
+        lastName: z.string().optional(),
+        telefono: z.string().optional(),
+        email: z.string().optional(),
+        dni: z.string().optional(),
+        obraSocial: z.string().optional(),
+        observaciones: z.string().optional(),
+        ficha: z.string().optional(),
+        startTime: z.string().nullable().optional(),
+        endTime: z.string().nullable().optional(),
+        estado: z.enum(ESTADO_TURNO).nullable().optional(),
+        odontologoACargoId: z.string().uuid().nullable().optional(),
+        pisoId: z.string().uuid().nullable().optional(),
+        llegadaHora: z.string().optional(),
+        salaHora: z.string().optional(),
+        finalizadoHora: z.string().optional(),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    if (!ctx.sucursalIds.includes(data.sucursalId)) {
+      throw new Error("No tenés acceso a esa sucursal");
+    }
+    const [suc] = await db
+      .select({ slug: sucursales.slug })
+      .from(sucursales)
+      .where(eq(sucursales.id, data.sucursalId))
+      .limit(1);
+    const cfg = ghlConfigForSlug(suc?.slug ?? null);
+    if (!cfg) throw new Error("Sucursal sin GHL configurado");
+
+    // 1) Contacto: datos base + custom fields.
+    const customFields: { id: string; value: string }[] = [];
+    if (data.dni !== undefined) customFields.push({ id: cfg.dniField, value: data.dni });
+    if (data.obraSocial !== undefined) customFields.push({ id: cfg.osField, value: data.obraSocial });
+    if (data.observaciones !== undefined)
+      customFields.push({ id: cfg.obsField, value: data.observaciones });
+    if (data.ficha !== undefined) customFields.push({ id: cfg.fichaField, value: data.ficha });
+    const contactBody: Record<string, unknown> = {};
+    if (data.firstName !== undefined) contactBody.firstName = data.firstName;
+    if (data.lastName !== undefined) contactBody.lastName = data.lastName;
+    if (data.telefono !== undefined) contactBody.phone = data.telefono;
+    if (data.email !== undefined) contactBody.email = data.email;
+    if (customFields.length) contactBody.customFields = customFields;
+    if (Object.keys(contactBody).length) await updateContactFull(cfg, data.contactId, contactBody);
+
+    // 2) Cita: reprograma (start/end) y/o estado.
+    const apptBody: Record<string, unknown> = {};
+    if (data.startTime) {
+      apptBody.startTime = data.startTime;
+      if (data.endTime) apptBody.endTime = data.endTime;
+      if (data.calendarId) apptBody.calendarId = data.calendarId;
+    }
+    if (data.estado) apptBody.appointmentStatus = data.estado === "ausente" ? "noshow" : "showed";
+    if (Object.keys(apptBody).length) await updateAppointmentFull(cfg, data.eventId, apptBody);
+
+    // 3) Local: estado + a cargo + horas (edición explícita, se pisan).
+    const llegadaAt =
+      data.llegadaHora !== undefined ? horaARaDate(data.fecha, data.llegadaHora) : undefined;
+    const salaAt = data.salaHora !== undefined ? horaARaDate(data.fecha, data.salaHora) : undefined;
+    const finalizadoAt =
+      data.finalizadoHora !== undefined ? horaARaDate(data.fecha, data.finalizadoHora) : undefined;
+    const setFields: Record<string, unknown> = { marcadoPor: ctx.userId, updatedAt: new Date() };
+    if (data.estado) {
+      setFields.estado = data.estado;
+      setFields.asistio = data.estado === "finalizado";
+    }
+    if (data.odontologoACargoId !== undefined) setFields.odontologoACargoId = data.odontologoACargoId;
+    if (data.pisoId !== undefined) setFields.pisoId = data.pisoId;
+    if (llegadaAt !== undefined) setFields.llegadaAt = llegadaAt;
+    if (salaAt !== undefined) setFields.salaAt = salaAt;
+    if (finalizadoAt !== undefined) setFields.finalizadoAt = finalizadoAt;
+    await db
+      .insert(turnoAsistencias)
+      .values({
+        ghlEventId: data.eventId,
+        sucursalId: data.sucursalId,
+        fecha: data.fecha,
+        estado: data.estado ?? null,
+        asistio: data.estado === "finalizado",
+        odontologoACargoId: data.odontologoACargoId ?? null,
+        pisoId: data.pisoId ?? null,
+        llegadaAt: llegadaAt ?? null,
+        salaAt: salaAt ?? null,
+        finalizadoAt: finalizadoAt ?? null,
+        marcadoPor: ctx.userId,
+      })
+      .onConflictDoUpdate({ target: turnoAsistencias.ghlEventId, set: setFields });
+
+    await logAudit(ctx, {
+      action: "update",
+      resource: "asistencia",
+      entityId: data.eventId,
+      resumen: "Editó el turno (datos del paciente / cita)",
       sucursalId: data.sucursalId,
     });
     return { ok: true };
@@ -726,16 +976,19 @@ export const marcarEstadoTurnoManual = createServerFn({ method: "POST" })
     if (!ctx.sucursalIds.includes(t.sucursalId)) {
       throw new Error("No tenés acceso a esa sucursal");
     }
-    // Igual que GHL: llegada al marcar "En recepción" y sala al marcar "En sala", una sola vez.
+    // Igual que GHL: llegada al marcar "En recepción", sala al marcar "En sala" y
+    // finalización al marcar "Finalizado", cada una una sola vez.
     const ahora = new Date().toISOString();
     const nueva = data.estado === "en_recepcion" ? ahora : null;
     const nuevaSala = data.estado === "en_consultorio" ? ahora : null;
+    const nuevaFin = data.estado === "finalizado" ? ahora : null;
     await db
       .update(turnosManuales)
       .set({
         estado: data.estado,
         llegadaAt: sql`coalesce(${turnosManuales.llegadaAt}, ${nueva})`,
         salaAt: sql`coalesce(${turnosManuales.salaAt}, ${nuevaSala})`,
+        finalizadoAt: sql`coalesce(${turnosManuales.finalizadoAt}, ${nuevaFin})`,
         marcadoPor: ctx.userId,
         updatedAt: new Date(),
       })
@@ -745,6 +998,98 @@ export const marcarEstadoTurnoManual = createServerFn({ method: "POST" })
       resource: "turno_manual",
       entityId: data.id,
       resumen: `Marcó turno manual: ${ESTADO_LABEL[data.estado] ?? data.estado}`,
+      sucursalId: t.sucursalId,
+    });
+    return { ok: true };
+  });
+
+// Odontólogo que realmente atendió un turno manual (override del asignado en el alta).
+export const setOdontologoACargoManual = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z.object({ id: z.string().uuid(), odontologoACargoId: z.string().uuid().nullable() }).parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    const [t] = await db
+      .select({ sucursalId: turnosManuales.sucursalId })
+      .from(turnosManuales)
+      .where(eq(turnosManuales.id, data.id))
+      .limit(1);
+    if (!t) throw new Error("Turno no encontrado");
+    if (!ctx.sucursalIds.includes(t.sucursalId)) {
+      throw new Error("No tenés acceso a esa sucursal");
+    }
+    await db
+      .update(turnosManuales)
+      .set({ odontologoACargoId: data.odontologoACargoId, updatedAt: new Date() })
+      .where(eq(turnosManuales.id, data.id));
+    await logAudit(ctx, {
+      action: "update",
+      resource: "turno_manual",
+      entityId: data.id,
+      resumen: "Cambió el odontólogo a cargo del turno manual",
+      sucursalId: t.sucursalId,
+    });
+    return { ok: true };
+  });
+
+// Edición completa de un turno manual desde el modal (todo local, sin GHL).
+export const actualizarTurnoManual = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        fecha: z.string(),
+        pacienteNombre: z.string().optional(),
+        dni: z.string().optional(),
+        telefono: z.string().nullable().optional(),
+        obraSocialId: z.string().uuid().nullable().optional(),
+        odontologoId: z.string().uuid().nullable().optional(),
+        odontologoACargoId: z.string().uuid().nullable().optional(),
+        pisoId: z.string().uuid().nullable().optional(),
+        motivo: z.string().nullable().optional(),
+        hora: z.string().nullable().optional(),
+        ficha: z.string().nullable().optional(),
+        estado: z.enum(ESTADO_TURNO).nullable().optional(),
+        llegadaHora: z.string().optional(),
+        salaHora: z.string().optional(),
+        finalizadoHora: z.string().optional(),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    const [t] = await db
+      .select({ sucursalId: turnosManuales.sucursalId })
+      .from(turnosManuales)
+      .where(eq(turnosManuales.id, data.id))
+      .limit(1);
+    if (!t) throw new Error("Turno no encontrado");
+    if (!ctx.sucursalIds.includes(t.sucursalId)) {
+      throw new Error("No tenés acceso a esa sucursal");
+    }
+    const set: Record<string, unknown> = { marcadoPor: ctx.userId, updatedAt: new Date() };
+    if (data.pacienteNombre !== undefined) set.pacienteNombre = data.pacienteNombre;
+    if (data.dni !== undefined) set.dni = data.dni;
+    if (data.telefono !== undefined) set.telefono = data.telefono;
+    if (data.obraSocialId !== undefined) set.obraSocialId = data.obraSocialId;
+    if (data.odontologoId !== undefined) set.odontologoId = data.odontologoId;
+    if (data.odontologoACargoId !== undefined) set.odontologoACargoId = data.odontologoACargoId;
+    if (data.pisoId !== undefined) set.pisoId = data.pisoId;
+    if (data.motivo !== undefined) set.motivo = data.motivo;
+    if (data.hora !== undefined) set.hora = data.hora;
+    if (data.ficha !== undefined) set.tieneFicha = data.ficha;
+    if (data.estado !== undefined) set.estado = data.estado;
+    if (data.llegadaHora !== undefined) set.llegadaAt = horaARaDate(data.fecha, data.llegadaHora);
+    if (data.salaHora !== undefined) set.salaAt = horaARaDate(data.fecha, data.salaHora);
+    if (data.finalizadoHora !== undefined)
+      set.finalizadoAt = horaARaDate(data.fecha, data.finalizadoHora);
+    await db.update(turnosManuales).set(set).where(eq(turnosManuales.id, data.id));
+    await logAudit(ctx, {
+      action: "update",
+      resource: "turno_manual",
+      entityId: data.id,
+      resumen: "Editó el turno manual",
       sucursalId: t.sucursalId,
     });
     return { ok: true };

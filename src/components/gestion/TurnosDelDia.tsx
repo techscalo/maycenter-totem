@@ -11,8 +11,17 @@ import {
   eliminarTurnoManual,
   actualizarFichaContacto,
   actualizarFichaManual,
+  setOdontologoACargoTurno,
+  setOdontologoACargoManual,
+  actualizarTurnoGhl,
+  actualizarTurnoManual,
 } from "@/lib/gestion/ghl.server";
-import { listOdontologos, listObrasSociales, getPacienteByDni } from "@/lib/gestion/data.server";
+import {
+  listOdontologos,
+  listObrasSociales,
+  listPisos,
+  getPacienteByDni,
+} from "@/lib/gestion/data.server";
 import { isValidDni, DNI_ERROR } from "@/lib/dni";
 import { useSucursalActiva } from "@/lib/gestion/sucursal-activa";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,6 +51,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuCheckboxItem,
+  DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import {
   Table,
@@ -63,6 +73,9 @@ import {
   Columns3,
   Plus,
   Trash2,
+  MoreHorizontal,
+  Eye,
+  Pencil,
 } from "lucide-react";
 
 type SortKey =
@@ -89,10 +102,13 @@ const COLS = [
   { key: "hora", label: "Hora turno" },
   { key: "llegada", label: "Hora llegada" },
   { key: "sala", label: "Hora ingreso a sala" },
+  { key: "finalizado", label: "Hora finalización" },
   { key: "paciente", label: "Paciente" },
   { key: "obraSocial", label: "Obra social" },
   { key: "telefono", label: "Teléfono" },
   { key: "agenda", label: "Agenda" },
+  { key: "piso", label: "Piso" },
+  { key: "odontologoACargo", label: "Odontólogo a cargo" },
   { key: "dni", label: "DNI", hiddenByDefault: true },
   { key: "agendadoPor", label: "Agendado por", hiddenByDefault: true },
   { key: "descripcion", label: "Descripción", hiddenByDefault: true },
@@ -115,6 +131,8 @@ export function TurnosDelDia() {
   const [q, setQ] = useState("");
   const [agendaFiltro, setAgendaFiltro] = useState<string>("all");
   const [estadoFiltro, setEstadoFiltro] = useState<string>("all");
+  const [pisoFiltro, setPisoFiltro] = useState<string>("all");
+  const [modal, setModal] = useState<{ row: any; modo: "ver" | "editar" } | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
     key: "startTime",
     dir: "asc",
@@ -143,6 +161,27 @@ export function TurnosDelDia() {
     queryKey,
     queryFn: () => getTurnosDelDia({ data: { sucursalId, fecha } }),
   });
+
+  // Odontólogos de la sucursal, para el selector "Odontólogo a cargo".
+  const { data: odontologos } = useQuery({
+    enabled: !!sucursalId,
+    queryKey: ["odontologos-sucursal", sucursalId],
+    queryFn: () => listOdontologos({ data: { sucursalId, soloActivos: true } as any }),
+  });
+  // Pisos de la sucursal, para el filtro.
+  const { data: pisos } = useQuery({
+    enabled: !!sucursalId,
+    queryKey: ["pisos-sucursal", sucursalId],
+    queryFn: () => listPisos({ data: { sucursalId } as any }),
+  });
+  const odontById = useMemo(
+    () => new Map((odontologos ?? []).map((o: any) => [o.id, o])),
+    [odontologos],
+  );
+  const pisoNombre = useMemo(
+    () => new Map((pisos ?? []).map((p: any) => [p.id, p.nombre])),
+    [pisos],
+  );
 
   const cambiarEstado = useMutation({
     mutationFn: (v: { row: any; estado: string }) =>
@@ -217,6 +256,68 @@ export function TurnosDelDia() {
     onSettled: () => qc.invalidateQueries({ queryKey }),
   });
 
+  const cambiarACargo = useMutation({
+    mutationFn: (v: { row: any; odontologoACargoId: string | null }) =>
+      v.row.tipo === "manual"
+        ? setOdontologoACargoManual({
+            data: { id: v.row.id, odontologoACargoId: v.odontologoACargoId } as any,
+          })
+        : setOdontologoACargoTurno({
+            data: {
+              eventId: v.row.eventId,
+              sucursalId,
+              fecha,
+              odontologoACargoId: v.odontologoACargoId,
+            } as any,
+          }),
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey });
+      const prev = qc.getQueryData<any>(queryKey);
+      const nombre =
+        (odontologos ?? []).find((o: any) => o.id === v.odontologoACargoId)?.nombre ?? null;
+      qc.setQueryData<any>(queryKey, (old: any) =>
+        old
+          ? {
+              ...old,
+              turnos: old.turnos.map((t: any) =>
+                t.rowId === v.row.rowId
+                  ? { ...t, odontologoACargoId: v.odontologoACargoId, odontologoACargo: nombre }
+                  : t,
+              ),
+            }
+          : old,
+      );
+      return { prev };
+    },
+    onError: (e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKey, ctx.prev);
+      toast.error((e as Error).message || "No se pudo cambiar el odontólogo a cargo");
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey }),
+  });
+
+  // El "profesional" de un turno de GHL es el nombre del calendario (p. ej.
+  // "Agenda Camilo Yepez - Blanqueamiento y carillas"); derivamos el odontólogo real
+  // buscando cuál de los cargados aparece en ese nombre. En los manuales ya es el nombre.
+  const odontologoDeAgenda = (profesional: string | null | undefined) => {
+    if (!profesional || profesional === "—") return null;
+    const p = profesional.toLowerCase();
+    const match = (odontologos ?? [])
+      .filter((o: any) => o.nombre && p.includes(o.nombre.toLowerCase()))
+      .sort((a: any, b: any) => b.nombre.length - a.nombre.length)[0];
+    return match?.nombre ?? profesional;
+  };
+
+  // Piso del turno, por prioridad: override manual → piso del odontólogo a cargo → piso del
+  // odontólogo de la agenda.
+  const pisoDeTurno = (t: any): string | null => {
+    if (t.pisoId) return t.pisoId;
+    if (t.odontologoACargoId) return odontById.get(t.odontologoACargoId)?.pisoId ?? null;
+    const nom = odontologoDeAgenda(t.profesional);
+    if (!nom) return null;
+    return (odontologos ?? []).find((o: any) => o.nombre === nom)?.pisoId ?? null;
+  };
+
   const soportado = data?.soportado ?? true;
   const turnos = (data?.turnos ?? []) as any[];
 
@@ -241,6 +342,7 @@ export function TurnosDelDia() {
           .includes(term),
       );
     if (agendaFiltro !== "all") list = list.filter((t) => t.profesional === agendaFiltro);
+    if (pisoFiltro !== "all") list = list.filter((t) => pisoDeTurno(t) === pisoFiltro);
     if (estadoFiltro !== "all")
       list = list.filter((t) =>
         estadoFiltro === "sin_marcar" ? !t.estado : t.estado === estadoFiltro,
@@ -250,7 +352,7 @@ export function TurnosDelDia() {
     return [...list].sort(
       (a, b) => String(val(a) ?? "").localeCompare(String(val(b) ?? ""), "es") * dir,
     );
-  }, [turnos, q, agendaFiltro, estadoFiltro, sort]);
+  }, [turnos, q, agendaFiltro, pisoFiltro, estadoFiltro, sort, odontologos]);
 
   const SortHead = ({ k, children, className }: { k: SortKey; children: any; className?: string }) => (
     <TableHead className={className}>
@@ -273,7 +375,7 @@ export function TurnosDelDia() {
     </TableHead>
   );
 
-  const colCount = COLS.filter((c) => show(c.key)).length;
+  const colCount = COLS.filter((c) => show(c.key)).length + 1;
 
   return (
     <div className="space-y-4">
@@ -311,6 +413,22 @@ export function TurnosDelDia() {
                 {agendas.map((a) => (
                   <SelectItem key={a} value={a}>
                     {a}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Piso</Label>
+            <Select value={pisoFiltro} onValueChange={setPisoFiltro}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los pisos</SelectItem>
+                {(pisos ?? []).map((p: any) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.nombre}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -393,10 +511,13 @@ export function TurnosDelDia() {
                     </SortHead>
                   )}
                   {show("sala") && <TableHead className="w-24">Ingreso a sala</TableHead>}
+                  {show("finalizado") && <TableHead className="w-24">Finalización</TableHead>}
                   {show("paciente") && <SortHead k="paciente">Paciente</SortHead>}
                   {show("obraSocial") && <SortHead k="obraSocial">Obra social</SortHead>}
                   {show("telefono") && <TableHead>Teléfono</TableHead>}
                   {show("agenda") && <SortHead k="profesional">Agenda</SortHead>}
+                  {show("piso") && <TableHead>Piso</TableHead>}
+                  {show("odontologoACargo") && <TableHead className="w-48">Odontólogo a cargo</TableHead>}
                   {show("dni") && <SortHead k="dni">DNI</SortHead>}
                   {show("agendadoPor") && <SortHead k="agendadoPor">Agendado por</SortHead>}
                   {show("descripcion") && <TableHead>Descripción</TableHead>}
@@ -409,6 +530,7 @@ export function TurnosDelDia() {
                   )}
                   {show("ficha") && <TableHead className="text-center">Ficha GHL</TableHead>}
                   {show("pacienteContacto") && <TableHead>Paciente que reservó</TableHead>}
+                  <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -452,6 +574,11 @@ export function TurnosDelDia() {
                           {t.salaHora ?? "—"}
                         </TableCell>
                       )}
+                      {show("finalizado") && (
+                        <TableCell className="tabular-nums text-sm">
+                          {t.finalizadoHora ?? "—"}
+                        </TableCell>
+                      )}
                       {show("paciente") && (
                         <TableCell className="font-medium">{t.paciente}</TableCell>
                       )}
@@ -464,6 +591,40 @@ export function TurnosDelDia() {
                         </TableCell>
                       )}
                       {show("agenda") && <TableCell className="text-sm">{t.profesional}</TableCell>}
+                      {show("piso") && (
+                        <TableCell className="text-sm">
+                          {pisoNombre.get(pisoDeTurno(t) ?? "") ?? "—"}
+                        </TableCell>
+                      )}
+                      {show("odontologoACargo") && (
+                        <TableCell>
+                          <Select
+                            value={t.odontologoACargoId ?? NONE}
+                            onValueChange={(v) =>
+                              cambiarACargo.mutate({
+                                row: t,
+                                odontologoACargoId: v === NONE ? null : v,
+                              })
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-44">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={NONE}>
+                                <span className="text-muted-foreground">
+                                  {odontologoDeAgenda(t.profesional) ?? "Según agenda"}
+                                </span>
+                              </SelectItem>
+                              {(odontologos ?? []).map((o: any) => (
+                                <SelectItem key={o.id} value={o.id}>
+                                  {o.nombre}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                      )}
                       {show("dni") && (
                         <TableCell className="tabular-nums">{t.dni ?? "—"}</TableCell>
                       )}
@@ -573,6 +734,23 @@ export function TurnosDelDia() {
                       {show("pacienteContacto") && (
                         <TableCell className="text-sm">{t.pacienteContacto ?? "—"}</TableCell>
                       )}
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => setModal({ row: t, modo: "ver" })}>
+                              <Eye className="mr-2 h-4 w-4" /> Ver
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => setModal({ row: t, modo: "editar" })}>
+                              <Pencil className="mr-2 h-4 w-4" /> Editar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -580,6 +758,22 @@ export function TurnosDelDia() {
             </Table>
           </CardContent>
         </Card>
+      )}
+
+      {modal && (
+        <EditarTurnoDialog
+          row={modal.row}
+          modo={modal.modo}
+          sucursalId={sucursalId}
+          fecha={fecha}
+          odontologos={odontologos ?? []}
+          pisos={pisos ?? []}
+          onClose={() => setModal(null)}
+          onSaved={() => {
+            setModal(null);
+            qc.invalidateQueries({ queryKey });
+          }}
+        />
       )}
     </div>
   );
@@ -785,6 +979,379 @@ function NuevoTurnoDialog({
           <Button onClick={() => crear.mutate()} disabled={!puedeGuardar}>
             {crear.isPending ? "Guardando…" : "Guardar turno"}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Modal de ver / editar un turno. En "editar" sincroniza con GHL (contacto + cita) para
+// los turnos de GHL, o actualiza la fila local para los manuales.
+function EditarTurnoDialog({
+  row,
+  modo,
+  sucursalId,
+  fecha,
+  odontologos,
+  pisos,
+  onClose,
+  onSaved,
+}: {
+  row: any;
+  modo: "ver" | "editar";
+  sucursalId: string | null;
+  fecha: string;
+  odontologos: any[];
+  pisos: any[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const ver = modo === "ver";
+  const esManual = row.tipo === "manual";
+  const [form, setForm] = useState(() => ({
+    firstName: row.firstName ?? "",
+    lastName: row.lastName ?? "",
+    pacienteNombre: row.paciente ?? "",
+    telefono: row.telefono ?? "",
+    email: row.email ?? "",
+    dni: row.dni ?? "",
+    obraSocial: row.obraSocial ?? "",
+    obraSocialId: row.obraSocialId ?? NONE,
+    observaciones: row.observaciones ?? "",
+    motivo: row.motivo ?? "",
+    ficha: row.ficha ?? "",
+    odontologoId: row.odontologoId ?? NONE,
+    odontologoACargoId: row.odontologoACargoId ?? NONE,
+    pisoId: row.pisoId ?? NONE,
+    estado: row.estado ?? "",
+    horaCita: row.hora ?? "",
+    st: esManual && !row.hora,
+    llegadaHora: row.llegadaHora ?? "",
+    salaHora: row.salaHora ?? "",
+    finalizadoHora: row.finalizadoHora ?? "",
+  }));
+  const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
+
+  const { data: obrasSociales } = useQuery({
+    enabled: esManual,
+    queryKey: ["obras-sociales-turno"],
+    queryFn: () => listObrasSociales(),
+  });
+
+  const guardar = useMutation({
+    mutationFn: () => {
+      if (esManual) {
+        return actualizarTurnoManual({
+          data: {
+            id: row.id,
+            fecha,
+            pacienteNombre: form.pacienteNombre.trim(),
+            dni: form.dni.trim(),
+            telefono: form.telefono.trim() || null,
+            obraSocialId: form.obraSocialId === NONE ? null : form.obraSocialId,
+            odontologoId: form.odontologoId === NONE ? null : form.odontologoId,
+            odontologoACargoId: form.odontologoACargoId === NONE ? null : form.odontologoACargoId,
+            pisoId: form.pisoId === NONE ? null : form.pisoId,
+            motivo: form.motivo.trim() || null,
+            hora: form.st ? null : form.horaCita || null,
+            ficha: form.ficha || null,
+            estado: form.estado || null,
+            llegadaHora: form.llegadaHora,
+            salaHora: form.salaHora,
+            finalizadoHora: form.finalizadoHora,
+          } as any,
+        });
+      }
+      const payload: any = {
+        eventId: row.eventId,
+        contactId: row.contactId,
+        sucursalId,
+        fecha,
+        calendarId: row.calendarId,
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        telefono: form.telefono.trim(),
+        email: form.email.trim(),
+        dni: form.dni.trim(),
+        obraSocial: form.obraSocial.trim(),
+        observaciones: form.observaciones.trim(),
+        ficha: form.ficha || undefined,
+        estado: form.estado || undefined,
+        odontologoACargoId: form.odontologoACargoId === NONE ? null : form.odontologoACargoId,
+        pisoId: form.pisoId === NONE ? null : form.pisoId,
+        llegadaHora: form.llegadaHora,
+        salaHora: form.salaHora,
+        finalizadoHora: form.finalizadoHora,
+      };
+      // Reprogramación: solo si cambió la hora de la cita.
+      if (form.horaCita && form.horaCita !== (row.hora ?? "")) {
+        const dur =
+          row.endTime && row.startTime
+            ? new Date(row.endTime).getTime() - new Date(row.startTime).getTime()
+            : 30 * 60000;
+        const start = new Date(`${fecha}T${form.horaCita}:00-03:00`);
+        const end = new Date(start.getTime() + (dur > 0 ? dur : 30 * 60000));
+        payload.startTime = start.toISOString();
+        payload.endTime = end.toISOString();
+      }
+      return actualizarTurnoGhl({ data: payload });
+    },
+    onSuccess: () => {
+      toast.success("Turno actualizado");
+      onSaved();
+    },
+    onError: (e) => toast.error((e as Error).message || "No se pudo actualizar el turno"),
+  });
+
+  const Campo = ({
+    label,
+    children,
+    full,
+  }: {
+    label: string;
+    children: any;
+    full?: boolean;
+  }) => (
+    <div className={full ? "col-span-2" : ""}>
+      <Label className="text-xs">{label}</Label>
+      {children}
+    </div>
+  );
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {ver ? "Ver turno" : "Editar turno"} · {row.paciente}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          {esManual ? (
+            <Campo label="Paciente" full>
+              <Input
+                value={form.pacienteNombre}
+                onChange={(e) => set("pacienteNombre", e.target.value)}
+                disabled={ver}
+              />
+            </Campo>
+          ) : (
+            <>
+              <Campo label="Nombre">
+                <Input
+                  value={form.firstName}
+                  onChange={(e) => set("firstName", e.target.value)}
+                  disabled={ver}
+                />
+              </Campo>
+              <Campo label="Apellido">
+                <Input
+                  value={form.lastName}
+                  onChange={(e) => set("lastName", e.target.value)}
+                  disabled={ver}
+                />
+              </Campo>
+            </>
+          )}
+          <Campo label="DNI">
+            <Input value={form.dni} onChange={(e) => set("dni", e.target.value)} disabled={ver} />
+          </Campo>
+          <Campo label="Teléfono">
+            <Input
+              value={form.telefono}
+              onChange={(e) => set("telefono", e.target.value)}
+              disabled={ver}
+            />
+          </Campo>
+          {!esManual && (
+            <Campo label="Email">
+              <Input
+                value={form.email}
+                onChange={(e) => set("email", e.target.value)}
+                disabled={ver}
+              />
+            </Campo>
+          )}
+          {esManual ? (
+            <Campo label="Obra social">
+              <Select
+                value={form.obraSocialId}
+                onValueChange={(v) => set("obraSocialId", v)}
+                disabled={ver}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin especificar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Sin especificar</SelectItem>
+                  {(obrasSociales ?? []).map((os: any) => (
+                    <SelectItem key={os.id} value={os.id}>
+                      {os.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Campo>
+          ) : (
+            <Campo label="Obra social">
+              <Input
+                value={form.obraSocial}
+                onChange={(e) => set("obraSocial", e.target.value)}
+                disabled={ver}
+              />
+            </Campo>
+          )}
+          <Campo label={esManual ? "Motivo" : "Observaciones"} full>
+            <Input
+              value={esManual ? form.motivo : form.observaciones}
+              onChange={(e) => set(esManual ? "motivo" : "observaciones", e.target.value)}
+              disabled={ver}
+            />
+          </Campo>
+          <Campo label="Ficha">
+            <Select value={form.ficha || NONE} onValueChange={(v) => set("ficha", v === NONE ? "" : v)} disabled={ver}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sin definir" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Sin definir</SelectItem>
+                <SelectItem value="Tiene Ficha">Tiene Ficha</SelectItem>
+                <SelectItem value="No tiene ficha">No tiene ficha</SelectItem>
+              </SelectContent>
+            </Select>
+          </Campo>
+          <Campo label={esManual ? "Odontólogo / agenda" : "Agenda"}>
+            {esManual ? (
+              <Select
+                value={form.odontologoId}
+                onValueChange={(v) => set("odontologoId", v)}
+                disabled={ver}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin asignar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Sin asignar</SelectItem>
+                  {odontologos.map((o: any) => (
+                    <SelectItem key={o.id} value={o.id}>
+                      {o.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input value={row.profesional} disabled />
+            )}
+          </Campo>
+          <Campo label="Odontólogo a cargo">
+            <Select
+              value={form.odontologoACargoId}
+              onValueChange={(v) => set("odontologoACargoId", v)}
+              disabled={ver}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Según agenda" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Según agenda</SelectItem>
+                {odontologos.map((o: any) => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Campo>
+          <Campo label="Piso">
+            <Select value={form.pisoId} onValueChange={(v) => set("pisoId", v)} disabled={ver}>
+              <SelectTrigger>
+                <SelectValue placeholder="Según odontólogo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Según odontólogo</SelectItem>
+                {pisos.map((p: any) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Campo>
+          <Campo label="Estado">
+            <Select value={form.estado || NONE} onValueChange={(v) => set("estado", v === NONE ? "" : v)} disabled={ver}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sin marcar" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Sin marcar</SelectItem>
+                {ESTADOS.map((e) => (
+                  <SelectItem key={e.value} value={e.value}>
+                    {e.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Campo>
+          <Campo label="Hora de la cita">
+            <Input
+              type="time"
+              value={form.st ? "" : form.horaCita}
+              onChange={(e) => set("horaCita", e.target.value)}
+              disabled={ver || form.st}
+            />
+            {esManual && (
+              <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={form.st}
+                  onChange={(e) => set("st", e.target.checked)}
+                  disabled={ver}
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+                Sin turno (ST)
+              </label>
+            )}
+          </Campo>
+          <Campo label="Hora de llegada">
+            <Input
+              type="time"
+              value={form.llegadaHora}
+              onChange={(e) => set("llegadaHora", e.target.value)}
+              disabled={ver}
+            />
+          </Campo>
+          <Campo label="Ingreso a sala">
+            <Input
+              type="time"
+              value={form.salaHora}
+              onChange={(e) => set("salaHora", e.target.value)}
+              disabled={ver}
+            />
+          </Campo>
+          <Campo label="Hora de finalización">
+            <Input
+              type="time"
+              value={form.finalizadoHora}
+              onChange={(e) => set("finalizadoHora", e.target.value)}
+              disabled={ver}
+            />
+          </Campo>
+        </div>
+        {!esManual && !ver && form.horaCita !== (row.hora ?? "") && (
+          <p className="text-[11px] text-amber-600 dark:text-amber-500">
+            Cambiar la hora reprograma la cita en GHL y puede reenviar el recordatorio/confirmación
+            al paciente.
+          </p>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            {ver ? "Cerrar" : "Cancelar"}
+          </Button>
+          {!ver && (
+            <Button onClick={() => guardar.mutate()} disabled={guardar.isPending}>
+              {guardar.isPending ? "Guardando…" : "Guardar cambios"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -301,6 +301,18 @@ export const turnoAsistencias = pgTable("turno_asistencias", {
   // Hora de ingreso a la sala de atención (se setea al marcar "En sala" / en_consultorio, una vez).
   // Distinta del ingreso a la clínica (arrivals.created_at del tótem).
   salaAt: timestamp("sala_at", { withTimezone: true }),
+  // Override manual de la hora de llegada (para turnos de GHL, cuya llegada normalmente viene
+  // del tótem por DNI). Si está seteado, tiene prioridad sobre el arrival. Editable desde el modal.
+  llegadaAt: timestamp("llegada_at", { withTimezone: true }),
+  // Hora en que se marcó "Finalizado" (una vez, no se pisa).
+  finalizadoAt: timestamp("finalizado_at", { withTimezone: true }),
+  // Odontólogo que realmente atendió, cuando difiere del de la agenda (calendario GHL).
+  // null = se atendió con el de la agenda.
+  odontologoACargoId: uuid("odontologo_a_cargo_id").references(() => odontologos.id, {
+    onDelete: "set null",
+  }),
+  // Override de piso (cuando no corresponde con el del odontólogo). null = piso del odontólogo.
+  pisoId: uuid("piso_id").references(() => pisos.id, { onDelete: "set null" }),
   marcadoPor: text("marcado_por"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -329,12 +341,21 @@ export const turnosManuales = pgTable(
     odontologoId: uuid("odontologo_id").references(() => odontologos.id, {
       onDelete: "set null",
     }),
+    // Odontólogo que realmente atendió, cuando difiere del asignado en el alta.
+    // null = se atendió con el `odontologoId` de la agenda.
+    odontologoACargoId: uuid("odontologo_a_cargo_id").references(() => odontologos.id, {
+      onDelete: "set null",
+    }),
+    // Override de piso (cuando no corresponde con el del odontólogo). null = piso del odontólogo.
+    pisoId: uuid("piso_id").references(() => pisos.id, { onDelete: "set null" }),
     motivo: text("motivo"),
     estado: text("estado"),
     // Ingreso a la clínica y a la sala. Como el manual no pasa por el tótem, se estampan
     // al marcar "En recepción" / "En sala" respectivamente (una vez, no se pisan).
     llegadaAt: timestamp("llegada_at", { withTimezone: true }),
     salaAt: timestamp("sala_at", { withTimezone: true }),
+    // Hora en que se marcó "Finalizado" (una vez, no se pisa).
+    finalizadoAt: timestamp("finalizado_at", { withTimezone: true }),
     marcadoPor: text("marcado_por"),
     createdBy: text("created_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
