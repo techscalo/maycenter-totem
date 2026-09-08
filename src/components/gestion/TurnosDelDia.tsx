@@ -149,7 +149,13 @@ export function TurnosDelDia() {
       v.row.tipo === "manual"
         ? marcarEstadoTurnoManual({ data: { id: v.row.id, estado: v.estado } as any })
         : marcarEstadoTurno({
-            data: { eventId: v.row.eventId, sucursalId, fecha, estado: v.estado } as any,
+            data: {
+              eventId: v.row.eventId,
+              contactId: v.row.contactId,
+              sucursalId,
+              fecha,
+              estado: v.estado,
+            } as any,
           }),
     onMutate: async (v) => {
       await qc.cancelQueries({ queryKey });

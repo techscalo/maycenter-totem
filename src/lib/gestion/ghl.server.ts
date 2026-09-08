@@ -28,6 +28,10 @@ type GhlConfig = {
   obsField: string;
   // Custom field "Ficha" del contacto (Tiene ficha / No tiene ficha).
   fichaField: string;
+  // Custom field "Estado de la cita" del contacto (Asistido / No Asistido). Lo lee el
+  // workflow de recupero de inasistidos, que no puede evaluar el appointmentStatus nativo.
+  // Solo existe en CABA; en el resto de sucursales es null y no se escribe.
+  estadoCitaField: string | null;
   // Filtros de calendarios (por id). Se aplican sobre la location, DESPUÉS del cache.
   onlyCalendarIds?: string[];
   excludeCalendarIds?: string[];
@@ -48,6 +52,7 @@ const GHL_BY_SLUG: Record<
     osField: string;
     obsField: string;
     fichaField: string;
+    estadoCitaField?: string;
     onlyCalendarIds?: string[];
     excludeCalendarIds?: string[];
   }
@@ -59,6 +64,7 @@ const GHL_BY_SLUG: Record<
     osField: "J1dLEUewkTaqVthYDOak",
     obsField: "RNgqB0yQSDM1LxeS7IRc",
     fichaField: "SP1rAdxTjKwrVa9Tougf",
+    estadoCitaField: "qGZJCp60BtzNyipXIjvD",
   },
   calle10: {
     locEnv: "GHL_LAPLATA_LOCATION_ID",
@@ -94,6 +100,7 @@ function ghlConfigForSlug(slug: string | null): GhlConfig | null {
       osField: entry.osField,
       obsField: entry.obsField,
       fichaField: entry.fichaField,
+      estadoCitaField: entry.estadoCitaField ?? null,
       onlyCalendarIds: entry.onlyCalendarIds,
       excludeCalendarIds: entry.excludeCalendarIds,
     };
@@ -535,6 +542,7 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
     z
       .object({
         eventId: z.string().min(1),
+        contactId: z.string().min(1),
         sucursalId: z.string().uuid(),
         fecha: z.string(),
         estado: z.enum(ESTADO_TURNO),
@@ -556,7 +564,20 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
       .where(eq(sucursales.id, data.sucursalId))
       .limit(1);
     const cfg = ghlConfigForSlug(suc?.slug ?? null);
-    if (cfg) await updateAppointmentStatus(cfg, data.eventId, ghlStatus);
+    if (cfg) {
+      await updateAppointmentStatus(cfg, data.eventId, ghlStatus);
+      // El workflow de recupero de inasistidos evalúa el custom field "Estado de la cita"
+      // (no el appointmentStatus nativo). Lo espejamos acá para que no dispare el mensaje de
+      // "no asistió" a quien la recepción marcó presente.
+      if (cfg.estadoCitaField) {
+        await updateContactField(
+          cfg,
+          data.contactId,
+          cfg.estadoCitaField,
+          data.estado === "ausente" ? "No Asistido" : "Asistido",
+        );
+      }
+    }
     // Hora de ingreso a sala: se estampa al marcar "En sala" (en_consultorio) y no se pisa
     // en marcas posteriores (coalesce mantiene la primera).
     const salaAhora = data.estado === "en_consultorio" ? new Date() : null;

@@ -313,7 +313,9 @@ estampa **al crear**; los ST se ordenan **intercalados** por hora.
 - [x] Prueba DB del flujo: crear ST (hora null) + llegada al crear → En sala → Finalizado
       **no pisa** llegada; ficha se guarda. Fila de prueba (fecha 1990) eliminada.
 - [ ] Verificación en navegador con Julián/Jota (crear ST, marcar ficha, finalizar).
-- [ ] Deploy a `main` cuando Dylan valide.
+- [x] Commit + push a `main` (techscalo, dd06c77). Vercel auto-deploya desde main.
+- [x] PDF de cambios con branding Maycenter (`~/Desktop/Maycenter-Actualizacion-Recepcion-2026-09-01.pdf`).
+- [x] Ayuda del sistema actualizada (sección Recepción).
 
 ## Resultado
 Código + migración completos, build/typecheck OK, flujo verificado contra la DB. Archivos:
