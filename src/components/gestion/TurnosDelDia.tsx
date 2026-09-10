@@ -862,13 +862,21 @@ export function TurnosDelDia() {
                         <TableCell>
                           <Select
                             value={t.estado ?? undefined}
-                            onValueChange={(v) => cambiarEstado.mutate({ row: t, estado: v })}
+                            onValueChange={(v) => {
+                              // "Cancelado" no se marca directo: abre el diálogo para el motivo opcional.
+                              if (v === "cancelado") {
+                                setCancelarRow(t);
+                                setCancelMotivo("");
+                              } else {
+                                cambiarEstado.mutate({ row: t, estado: v });
+                              }
+                            }}
                           >
                             <SelectTrigger className="h-8 w-40">
                               <SelectValue placeholder="Sin marcar" />
                             </SelectTrigger>
                             <SelectContent>
-                              {ESTADOS.filter((e) => e.value !== "cancelado").map((e) => (
+                              {ESTADOS.map((e) => (
                                 <SelectItem key={e.value} value={e.value}>
                                   <span className="inline-flex items-center gap-2">
                                     <span className={cn("h-2.5 w-2.5 rounded-full", e.dot)} />
