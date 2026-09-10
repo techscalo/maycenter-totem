@@ -876,6 +876,76 @@ export const setOdontologoACargoTurno = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Override de piso de un turno de GHL (editable inline en la tabla). null = piso del odontólogo.
+export const setPisoTurno = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        eventId: z.string().min(1),
+        sucursalId: z.string().uuid(),
+        fecha: z.string(),
+        pisoId: z.string().uuid().nullable(),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    if (!ctx.sucursalIds.includes(data.sucursalId)) {
+      throw new Error("No tenés acceso a esa sucursal");
+    }
+    await db
+      .insert(turnoAsistencias)
+      .values({
+        ghlEventId: data.eventId,
+        sucursalId: data.sucursalId,
+        fecha: data.fecha,
+        pisoId: data.pisoId,
+        marcadoPor: ctx.userId,
+      })
+      .onConflictDoUpdate({
+        target: turnoAsistencias.ghlEventId,
+        set: { pisoId: data.pisoId, updatedAt: new Date() },
+      });
+    await logAudit(ctx, {
+      action: "update",
+      resource: "asistencia",
+      entityId: data.eventId,
+      resumen: "Cambió el piso del turno",
+      sucursalId: data.sucursalId,
+    });
+    return { ok: true };
+  });
+
+// Override de piso de un turno manual (editable inline en la tabla).
+export const setPisoManual = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z.object({ id: z.string().uuid(), pisoId: z.string().uuid().nullable() }).parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    const [t] = await db
+      .select({ sucursalId: turnosManuales.sucursalId })
+      .from(turnosManuales)
+      .where(eq(turnosManuales.id, data.id))
+      .limit(1);
+    if (!t) throw new Error("Turno no encontrado");
+    if (!ctx.sucursalIds.includes(t.sucursalId)) {
+      throw new Error("No tenés acceso a esa sucursal");
+    }
+    await db
+      .update(turnosManuales)
+      .set({ pisoId: data.pisoId, marcadoPor: ctx.userId, updatedAt: new Date() })
+      .where(eq(turnosManuales.id, data.id));
+    await logAudit(ctx, {
+      action: "update",
+      resource: "turno_manual",
+      entityId: data.id,
+      resumen: "Cambió el piso del turno manual",
+      sucursalId: t.sucursalId,
+    });
+    return { ok: true };
+  });
+
 // Edición completa de un turno de GHL desde el modal: datos del contacto + custom fields,
 // reprogramación de la cita (start/end en GHL) y campos locales (estado, a cargo, horas).
 export const actualizarTurnoGhl = createServerFn({ method: "POST" })

@@ -13,6 +13,8 @@ import {
   actualizarFichaManual,
   setOdontologoACargoTurno,
   setOdontologoACargoManual,
+  setPisoTurno,
+  setPisoManual,
   actualizarTurnoGhl,
   actualizarTurnoManual,
   cancelarTurnoGhl,
@@ -328,6 +330,35 @@ export function TurnosDelDia() {
     onSettled: () => qc.invalidateQueries({ queryKey }),
   });
 
+  const cambiarPiso = useMutation({
+    mutationFn: (v: { row: any; pisoId: string | null }) =>
+      v.row.tipo === "manual"
+        ? setPisoManual({ data: { id: v.row.id, pisoId: v.pisoId } as any })
+        : setPisoTurno({
+            data: { eventId: v.row.eventId, sucursalId, fecha, pisoId: v.pisoId } as any,
+          }),
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey });
+      const prev = qc.getQueryData<any>(queryKey);
+      qc.setQueryData<any>(queryKey, (old: any) =>
+        old
+          ? {
+              ...old,
+              turnos: old.turnos.map((t: any) =>
+                t.rowId === v.row.rowId ? { ...t, pisoId: v.pisoId } : t,
+              ),
+            }
+          : old,
+      );
+      return { prev };
+    },
+    onError: (e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKey, ctx.prev);
+      toast.error((e as Error).message || "No se pudo cambiar el piso");
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey }),
+  });
+
   // El "profesional" de un turno de GHL es el nombre del calendario (p. ej.
   // "Agenda Camilo Yepez - Blanqueamiento y carillas"); derivamos el odontólogo real
   // buscando cuál de los cargados aparece en ese nombre. En los manuales ya es el nombre.
@@ -410,8 +441,12 @@ export function TurnosDelDia() {
   const colCount = COLS.filter((c) => show(c.key)).length + 1;
 
   // Scroll horizontal por botones y columnas con ancho ajustable (arrastrando el borde).
+  // El elemento que realmente scrollea es el wrapper que agrega el componente <Table> de shadcn
+  // (div.overflow-auto envolviendo la <table>), no nuestro contenedor externo.
   const scrollRef = useRef<HTMLDivElement>(null);
-  const nudge = (dir: number) => scrollRef.current?.scrollBy({ left: dir * 400, behavior: "smooth" });
+  const getScroller = () =>
+    (scrollRef.current?.querySelector("table")?.parentElement as HTMLElement | null) ?? null;
+  const nudge = (dir: number) => getScroller()?.scrollBy({ left: dir * 400, behavior: "smooth" });
   const visibleSig = COLS.filter((c) => show(c.key))
     .map((c) => c.key)
     .join(",");
@@ -424,8 +459,11 @@ export function TurnosDelDia() {
     ths.forEach((th, i) => {
       if (i >= cols.length - 1) return; // la última columna es la de acciones
       const handle = document.createElement("div");
+      handle.title = "Arrastrá para ajustar el ancho";
       handle.style.cssText =
-        "position:absolute;top:0;right:0;height:100%;width:6px;cursor:col-resize;user-select:none;touch-action:none;";
+        "position:absolute;top:0;right:0;height:100%;width:7px;cursor:col-resize;user-select:none;touch-action:none;background:transparent;transition:background .12s;";
+      handle.addEventListener("mouseenter", () => (handle.style.background = "rgba(4,84,120,.35)"));
+      handle.addEventListener("mouseleave", () => (handle.style.background = "transparent"));
       th.style.position = "relative";
       let startX = 0;
       let startW = 0;
@@ -603,8 +641,8 @@ export function TurnosDelDia() {
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
-            <div ref={scrollRef} className="overflow-x-auto">
-            <Table>
+            <div ref={scrollRef}>
+            <Table className="[&_th]:border-r [&_th]:border-border [&_td]:border-r [&_td]:border-border [&_th:last-child]:border-r-0 [&_td:last-child]:border-r-0">
               <colgroup>
                 {COLS.filter((c) => show(c.key)).map((c) => (
                   <col key={c.key} />
@@ -630,7 +668,7 @@ export function TurnosDelDia() {
                   {show("obraSocial") && <SortHead k="obraSocial">Obra social</SortHead>}
                   {show("telefono") && <TableHead>Teléfono</TableHead>}
                   {show("agenda") && <SortHead k="profesional">Agenda</SortHead>}
-                  {show("piso") && <TableHead>Piso</TableHead>}
+                  {show("piso") && <TableHead className="w-28">Piso</TableHead>}
                   {show("odontologoACargo") && <TableHead className="w-48">Odontólogo a cargo</TableHead>}
                   {show("dni") && <SortHead k="dni">DNI</SortHead>}
                   {show("agendadoPor") && <SortHead k="agendadoPor">Agendado por</SortHead>}
@@ -711,8 +749,27 @@ export function TurnosDelDia() {
                       )}
                       {show("agenda") && <TableCell className="text-sm">{t.profesional}</TableCell>}
                       {show("piso") && (
-                        <TableCell className="text-sm">
-                          {pisoNombre.get(pisoDeTurno(t) ?? "") ?? "—"}
+                        <TableCell>
+                          <Select
+                            value={pisoDeTurno(t) ?? NONE}
+                            onValueChange={(v) =>
+                              cambiarPiso.mutate({ row: t, pisoId: v === NONE ? null : v })
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-28">
+                              <SelectValue placeholder="—" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={NONE}>
+                                <span className="text-muted-foreground">Automático</span>
+                              </SelectItem>
+                              {(pisos ?? []).map((p: any) => (
+                                <SelectItem key={p.id} value={p.id}>
+                                  {p.nombre}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                       )}
                       {show("odontologoACargo") && (
