@@ -818,6 +818,18 @@ export const actualizarTurnoGhl = createServerFn({ method: "POST" })
     }
     if (data.estado) apptBody.appointmentStatus = data.estado === "ausente" ? "noshow" : "showed";
     if (Object.keys(apptBody).length) await updateAppointmentFull(cfg, data.eventId, apptBody);
+    // Espejar el custom field "Estado de la cita" que lee el workflow de recupero de inasistidos
+    // (mismo motivo que en marcarEstadoTurno). Sin esto, corregir la asistencia desde la edición
+    // dejaba el appointmentStatus en "showed" pero el field en "No Asistido", y el paciente que
+    // sí asistió recibía igual el mensaje de "no asistió" al día siguiente.
+    if (data.estado && cfg.estadoCitaField) {
+      await updateContactField(
+        cfg,
+        data.contactId,
+        cfg.estadoCitaField,
+        data.estado === "ausente" ? "No Asistido" : "Asistido",
+      );
+    }
 
     // 3) Local: estado + a cargo + horas (edición explícita, se pisan).
     const llegadaAt =
