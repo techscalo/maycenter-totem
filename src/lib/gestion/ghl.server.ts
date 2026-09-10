@@ -194,6 +194,21 @@ async function updateAppointmentFull(cfg: GhlConfig, eventId: string, body: Reco
   if (!res.ok) throw new Error(`No se pudo actualizar el turno en GHL (${res.status})`);
 }
 
+// Agrega una nota al contacto en GHL (se usa para dejar registro del motivo de cancelación).
+async function addContactNote(cfg: GhlConfig, contactId: string, body: string) {
+  const res = await fetch(`${GHL_BASE}/contacts/${contactId}/notes`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${cfg.pit}`,
+      Version: "2021-07-28",
+      "User-Agent": "curl/8.4.0",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ body }),
+  });
+  if (!res.ok) throw new Error(`No se pudo agregar la nota en GHL (${res.status})`);
+}
+
 const onlyDigits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
 
 // "HH:MM" (hora de Argentina) + fecha "YYYY-MM-DD" → Date. "" o null → null (limpia el valor).
@@ -375,6 +390,8 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
       llegadaAt: turnosManuales.llegadaAt,
       salaAt: turnosManuales.salaAt,
       finalizadoAt: turnosManuales.finalizadoAt,
+      retiroAt: turnosManuales.retiroAt,
+      cancelMotivo: turnosManuales.cancelMotivo,
       obraSocialId: turnosManuales.obraSocialId,
       obraSocial: obrasSociales.nombre,
       odontologoId: turnosManuales.odontologoId,
@@ -424,6 +441,8 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
     llegadaHora: m.llegadaAt ? hhmmAR(new Date(m.llegadaAt)) : null,
     salaHora: m.salaAt ? hhmmAR(new Date(m.salaAt)) : null,
     finalizadoHora: m.finalizadoAt ? hhmmAR(new Date(m.finalizadoAt)) : null,
+    retiroHora: m.retiroAt ? hhmmAR(new Date(m.retiroAt)) : null,
+    cancelMotivo: m.cancelMotivo as string | null,
     odontologoACargoId: m.odontologoACargoId as string | null,
     odontologoACargo: m.odontologoACargo as string | null,
     pisoId: m.pisoId as string | null,
@@ -480,6 +499,8 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
             salaAt: turnoAsistencias.salaAt,
             llegadaAt: turnoAsistencias.llegadaAt,
             finalizadoAt: turnoAsistencias.finalizadoAt,
+            retiroAt: turnoAsistencias.retiroAt,
+            cancelMotivo: turnoAsistencias.cancelMotivo,
             odontologoACargoId: turnoAsistencias.odontologoACargoId,
             pisoId: turnoAsistencias.pisoId,
           })
@@ -489,6 +510,8 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
     const estadoMap = new Map(marcadas.map((m) => [m.eventId, m.estado]));
     const salaMap = new Map(marcadas.map((m) => [m.eventId, m.salaAt]));
     const finMap = new Map(marcadas.map((m) => [m.eventId, m.finalizadoAt]));
+    const retiroMap = new Map(marcadas.map((m) => [m.eventId, m.retiroAt]));
+    const cancelMotivoMap = new Map(marcadas.map((m) => [m.eventId, m.cancelMotivo]));
     const llegadaOverrideMap = new Map(marcadas.map((m) => [m.eventId, m.llegadaAt]));
     const aCargoMap = new Map(marcadas.map((m) => [m.eventId, m.odontologoACargoId]));
     const pisoMap = new Map(marcadas.map((m) => [m.eventId, m.pisoId]));
@@ -529,6 +552,7 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
           (ingresoTotem ? "en_recepcion" : estadoDesdeGhl(e.estadoGhl));
         const salaAt = salaMap.get(e.eventId) ?? null;
         const finAt = finMap.get(e.eventId) ?? null;
+        const retiroAt = retiroMap.get(e.eventId) ?? null;
         const llegadaOverride = llegadaOverrideMap.get(e.eventId) ?? null;
         const llegadaFecha = llegadaOverride ?? (llegada ? llegada.createdAt : null);
         const aCargoId = aCargoMap.get(e.eventId) ?? null;
@@ -563,6 +587,8 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
           llegadaHora: llegadaFecha ? hhmmAR(new Date(llegadaFecha)) : null,
           salaHora: salaAt ? hhmmAR(new Date(salaAt)) : null,
           finalizadoHora: finAt ? hhmmAR(new Date(finAt)) : null,
+          retiroHora: retiroAt ? hhmmAR(new Date(retiroAt)) : null,
+          cancelMotivo: cancelMotivoMap.get(e.eventId) ?? null,
           odontologoACargoId: aCargoId,
           odontologoACargo: aCargoId ? (odontNombre.get(aCargoId) ?? null) : null,
           pisoId: pisoMap.get(e.eventId) ?? null,
@@ -623,12 +649,16 @@ export const getResumenRecepcion = createServerFn({ method: "GET" })
     };
   });
 
-const ESTADO_TURNO = ["en_recepcion", "en_consultorio", "finalizado", "ausente"] as const;
+// Estados marcables desde el selector de Recepción. "cancelado" NO va acá: se escribe por
+// cancelarTurno* (lleva motivo y mapea a GHL cancelled), no por el marcado rápido.
+const ESTADO_TURNO = ["en_recepcion", "en_consultorio", "finalizado", "ausente", "se_retiro"] as const;
 const ESTADO_LABEL: Record<string, string> = {
   en_recepcion: "En recepción",
   en_consultorio: "En sala",
   finalizado: "Finalizado",
   ausente: "Ausente",
+  se_retiro: "Se retiró",
+  cancelado: "Cancelado",
 };
 
 export const marcarEstadoTurno = createServerFn({ method: "POST" })
@@ -677,6 +707,7 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
     // primera).
     const salaAhora = data.estado === "en_consultorio" ? new Date() : null;
     const finAhora = data.estado === "finalizado" ? new Date() : null;
+    const retiroAhora = data.estado === "se_retiro" ? new Date() : null;
     await db
       .insert(turnoAsistencias)
       .values({
@@ -687,6 +718,7 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
         estado: data.estado,
         salaAt: salaAhora,
         finalizadoAt: finAhora,
+        retiroAt: retiroAhora,
         marcadoPor: ctx.userId,
       })
       .onConflictDoUpdate({
@@ -696,6 +728,7 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
           estado: data.estado,
           salaAt: sql`coalesce(${turnoAsistencias.salaAt}, ${salaAhora ? salaAhora.toISOString() : null})`,
           finalizadoAt: sql`coalesce(${turnoAsistencias.finalizadoAt}, ${finAhora ? finAhora.toISOString() : null})`,
+          retiroAt: sql`coalesce(${turnoAsistencias.retiroAt}, ${retiroAhora ? retiroAhora.toISOString() : null})`,
           marcadoPor: ctx.userId,
           updatedAt: new Date(),
         },
@@ -706,6 +739,98 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
       entityId: data.eventId,
       resumen: `Marcó turno: ${ESTADO_LABEL[data.estado] ?? data.estado}`,
       sucursalId: data.sucursalId,
+    });
+    return { ok: true };
+  });
+
+// Cancela un turno de GHL: marca la cita "cancelled" y (si hay motivo) deja una nota en el
+// contacto. Localmente guarda estado "cancelado" + el motivo. El motivo es opcional.
+export const cancelarTurnoGhl = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        eventId: z.string().min(1),
+        contactId: z.string().min(1),
+        sucursalId: z.string().uuid(),
+        fecha: z.string(),
+        motivo: z.string().optional(),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    if (!ctx.sucursalIds.includes(data.sucursalId)) {
+      throw new Error("No tenés acceso a esa sucursal");
+    }
+    const motivo = data.motivo?.trim() || null;
+    const [suc] = await db
+      .select({ slug: sucursales.slug })
+      .from(sucursales)
+      .where(eq(sucursales.id, data.sucursalId))
+      .limit(1);
+    const cfg = ghlConfigForSlug(suc?.slug ?? null);
+    if (cfg) {
+      await updateAppointmentStatus(cfg, data.eventId, "cancelled");
+      if (motivo) await addContactNote(cfg, data.contactId, `Turno cancelado desde recepción: ${motivo}`);
+    }
+    await db
+      .insert(turnoAsistencias)
+      .values({
+        ghlEventId: data.eventId,
+        sucursalId: data.sucursalId,
+        fecha: data.fecha,
+        asistio: false,
+        estado: "cancelado",
+        cancelMotivo: motivo,
+        marcadoPor: ctx.userId,
+      })
+      .onConflictDoUpdate({
+        target: turnoAsistencias.ghlEventId,
+        set: {
+          asistio: false,
+          estado: "cancelado",
+          cancelMotivo: motivo,
+          marcadoPor: ctx.userId,
+          updatedAt: new Date(),
+        },
+      });
+    await logAudit(ctx, {
+      action: "update",
+      resource: "asistencia",
+      entityId: data.eventId,
+      resumen: motivo ? `Canceló el turno: ${motivo}` : "Canceló el turno",
+      sucursalId: data.sucursalId,
+    });
+    return { ok: true };
+  });
+
+// Cancela un turno manual (sin GHL): estado "cancelado" + motivo opcional local.
+export const cancelarTurnoManual = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z.object({ id: z.string().uuid(), motivo: z.string().optional() }).parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    const [t] = await db
+      .select({ sucursalId: turnosManuales.sucursalId })
+      .from(turnosManuales)
+      .where(eq(turnosManuales.id, data.id))
+      .limit(1);
+    if (!t) throw new Error("Turno no encontrado");
+    if (!ctx.sucursalIds.includes(t.sucursalId)) {
+      throw new Error("No tenés acceso a esa sucursal");
+    }
+    const motivo = data.motivo?.trim() || null;
+    await db
+      .update(turnosManuales)
+      .set({ estado: "cancelado", cancelMotivo: motivo, marcadoPor: ctx.userId, updatedAt: new Date() })
+      .where(eq(turnosManuales.id, data.id));
+    await logAudit(ctx, {
+      action: "update",
+      resource: "turno_manual",
+      entityId: data.id,
+      resumen: motivo ? `Canceló el turno manual: ${motivo}` : "Canceló el turno manual",
+      sucursalId: t.sucursalId,
     });
     return { ok: true };
   });
@@ -778,6 +903,7 @@ export const actualizarTurnoGhl = createServerFn({ method: "POST" })
         llegadaHora: z.string().optional(),
         salaHora: z.string().optional(),
         finalizadoHora: z.string().optional(),
+        retiroHora: z.string().optional(),
       })
       .parse(i),
   )
@@ -837,6 +963,8 @@ export const actualizarTurnoGhl = createServerFn({ method: "POST" })
     const salaAt = data.salaHora !== undefined ? horaARaDate(data.fecha, data.salaHora) : undefined;
     const finalizadoAt =
       data.finalizadoHora !== undefined ? horaARaDate(data.fecha, data.finalizadoHora) : undefined;
+    const retiroAt =
+      data.retiroHora !== undefined ? horaARaDate(data.fecha, data.retiroHora) : undefined;
     const setFields: Record<string, unknown> = { marcadoPor: ctx.userId, updatedAt: new Date() };
     if (data.estado) {
       setFields.estado = data.estado;
@@ -847,6 +975,7 @@ export const actualizarTurnoGhl = createServerFn({ method: "POST" })
     if (llegadaAt !== undefined) setFields.llegadaAt = llegadaAt;
     if (salaAt !== undefined) setFields.salaAt = salaAt;
     if (finalizadoAt !== undefined) setFields.finalizadoAt = finalizadoAt;
+    if (retiroAt !== undefined) setFields.retiroAt = retiroAt;
     await db
       .insert(turnoAsistencias)
       .values({
@@ -860,6 +989,7 @@ export const actualizarTurnoGhl = createServerFn({ method: "POST" })
         llegadaAt: llegadaAt ?? null,
         salaAt: salaAt ?? null,
         finalizadoAt: finalizadoAt ?? null,
+        retiroAt: retiroAt ?? null,
         marcadoPor: ctx.userId,
       })
       .onConflictDoUpdate({ target: turnoAsistencias.ghlEventId, set: setFields });
@@ -994,6 +1124,7 @@ export const marcarEstadoTurnoManual = createServerFn({ method: "POST" })
     const nueva = data.estado === "en_recepcion" ? ahora : null;
     const nuevaSala = data.estado === "en_consultorio" ? ahora : null;
     const nuevaFin = data.estado === "finalizado" ? ahora : null;
+    const nuevaRetiro = data.estado === "se_retiro" ? ahora : null;
     await db
       .update(turnosManuales)
       .set({
@@ -1001,6 +1132,7 @@ export const marcarEstadoTurnoManual = createServerFn({ method: "POST" })
         llegadaAt: sql`coalesce(${turnosManuales.llegadaAt}, ${nueva})`,
         salaAt: sql`coalesce(${turnosManuales.salaAt}, ${nuevaSala})`,
         finalizadoAt: sql`coalesce(${turnosManuales.finalizadoAt}, ${nuevaFin})`,
+        retiroAt: sql`coalesce(${turnosManuales.retiroAt}, ${nuevaRetiro})`,
         marcadoPor: ctx.userId,
         updatedAt: new Date(),
       })
@@ -1066,6 +1198,7 @@ export const actualizarTurnoManual = createServerFn({ method: "POST" })
         llegadaHora: z.string().optional(),
         salaHora: z.string().optional(),
         finalizadoHora: z.string().optional(),
+        retiroHora: z.string().optional(),
       })
       .parse(i),
   )
@@ -1096,6 +1229,7 @@ export const actualizarTurnoManual = createServerFn({ method: "POST" })
     if (data.salaHora !== undefined) set.salaAt = horaARaDate(data.fecha, data.salaHora);
     if (data.finalizadoHora !== undefined)
       set.finalizadoAt = horaARaDate(data.fecha, data.finalizadoHora);
+    if (data.retiroHora !== undefined) set.retiroAt = horaARaDate(data.fecha, data.retiroHora);
     await db.update(turnosManuales).set(set).where(eq(turnosManuales.id, data.id));
     await logAudit(ctx, {
       action: "update",

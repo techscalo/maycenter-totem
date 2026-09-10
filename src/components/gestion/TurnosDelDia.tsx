@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -15,6 +15,8 @@ import {
   setOdontologoACargoManual,
   actualizarTurnoGhl,
   actualizarTurnoManual,
+  cancelarTurnoGhl,
+  cancelarTurnoManual,
 } from "@/lib/gestion/ghl.server";
 import {
   listOdontologos,
@@ -76,6 +78,9 @@ import {
   MoreHorizontal,
   Eye,
   Pencil,
+  Ban,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 type SortKey =
@@ -93,7 +98,9 @@ const ESTADOS = [
   { value: "en_recepcion", label: "En recepción", dot: "bg-yellow-400", row: "bg-yellow-50 dark:bg-yellow-950/20" },
   { value: "en_consultorio", label: "En sala", dot: "bg-sky-400", row: "bg-sky-50 dark:bg-sky-950/20" },
   { value: "finalizado", label: "Finalizado", dot: "bg-green-500", row: "bg-green-50 dark:bg-green-950/20" },
+  { value: "se_retiro", label: "Se retiró", dot: "bg-orange-400", row: "bg-orange-50 dark:bg-orange-950/20" },
   { value: "ausente", label: "Ausente", dot: "bg-gray-400", row: "opacity-60" },
+  { value: "cancelado", label: "Cancelado", dot: "bg-red-500", row: "bg-red-50 dark:bg-red-950/20 opacity-70" },
 ] as const;
 const ESTADO_MAP = Object.fromEntries(ESTADOS.map((e) => [e.value, e]));
 
@@ -103,6 +110,7 @@ const COLS = [
   { key: "llegada", label: "Hora llegada" },
   { key: "sala", label: "Hora ingreso a sala" },
   { key: "finalizado", label: "Hora finalización" },
+  { key: "retiro", label: "Hora retiro", hiddenByDefault: true },
   { key: "paciente", label: "Paciente" },
   { key: "obraSocial", label: "Obra social" },
   { key: "telefono", label: "Teléfono" },
@@ -133,6 +141,8 @@ export function TurnosDelDia() {
   const [estadoFiltro, setEstadoFiltro] = useState<string>("all");
   const [pisoFiltro, setPisoFiltro] = useState<string>("all");
   const [modal, setModal] = useState<{ row: any; modo: "ver" | "editar" } | null>(null);
+  const [cancelarRow, setCancelarRow] = useState<any | null>(null);
+  const [cancelMotivo, setCancelMotivo] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
     key: "startTime",
     dir: "asc",
@@ -215,6 +225,28 @@ export function TurnosDelDia() {
       if (ctx?.prev) qc.setQueryData(queryKey, ctx.prev);
       toast.error((e as Error).message || "No se pudo actualizar el turno");
     },
+    onSettled: () => qc.invalidateQueries({ queryKey }),
+  });
+
+  const cancelar = useMutation({
+    mutationFn: (v: { row: any; motivo: string }) =>
+      v.row.tipo === "manual"
+        ? cancelarTurnoManual({ data: { id: v.row.id, motivo: v.motivo || undefined } as any })
+        : cancelarTurnoGhl({
+            data: {
+              eventId: v.row.eventId,
+              contactId: v.row.contactId,
+              sucursalId,
+              fecha,
+              motivo: v.motivo || undefined,
+            } as any,
+          }),
+    onSuccess: () => {
+      toast.success("Turno cancelado");
+      setCancelarRow(null);
+      setCancelMotivo("");
+    },
+    onError: (e) => toast.error((e as Error).message || "No se pudo cancelar el turno"),
     onSettled: () => qc.invalidateQueries({ queryKey }),
   });
 
@@ -377,6 +409,57 @@ export function TurnosDelDia() {
 
   const colCount = COLS.filter((c) => show(c.key)).length + 1;
 
+  // Scroll horizontal por botones y columnas con ancho ajustable (arrastrando el borde).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const nudge = (dir: number) => scrollRef.current?.scrollBy({ left: dir * 400, behavior: "smooth" });
+  const visibleSig = COLS.filter((c) => show(c.key))
+    .map((c) => c.key)
+    .join(",");
+  useEffect(() => {
+    const table = scrollRef.current?.querySelector("table");
+    if (!table) return;
+    const cols = Array.from(table.querySelectorAll("colgroup > col")) as HTMLTableColElement[];
+    const ths = Array.from(table.querySelectorAll("thead th")) as HTMLElement[];
+    const cleanups: Array<() => void> = [];
+    ths.forEach((th, i) => {
+      if (i >= cols.length - 1) return; // la última columna es la de acciones
+      const handle = document.createElement("div");
+      handle.style.cssText =
+        "position:absolute;top:0;right:0;height:100%;width:6px;cursor:col-resize;user-select:none;touch-action:none;";
+      th.style.position = "relative";
+      let startX = 0;
+      let startW = 0;
+      const onMove = (e: MouseEvent) => {
+        cols[i].style.width = `${Math.max(48, startW + (e.clientX - startX))}px`;
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        document.body.style.cursor = "";
+      };
+      const onDown = (e: MouseEvent) => {
+        e.preventDefault();
+        // Sembrar los anchos actuales y fijar el layout para poder agrandar y achicar.
+        cols.forEach((c, j) => {
+          if (!c.style.width && ths[j]) c.style.width = `${ths[j].offsetWidth}px`;
+        });
+        table.style.tableLayout = "fixed";
+        startX = e.clientX;
+        startW = cols[i].offsetWidth;
+        document.body.style.cursor = "col-resize";
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      };
+      handle.addEventListener("mousedown", onDown);
+      th.appendChild(handle);
+      cleanups.push(() => {
+        handle.removeEventListener("mousedown", onDown);
+        handle.remove();
+      });
+    });
+    return () => cleanups.forEach((fn) => fn());
+  }, [visibleSig, data]);
+
   return (
     <div className="space-y-4">
       <Card>
@@ -496,8 +579,38 @@ export function TurnosDelDia() {
         </Card>
       ) : (
         <Card>
-          <CardContent className="p-0 overflow-x-auto">
+          <CardContent className="p-0">
+            <div className="flex items-center gap-1 border-b px-2 py-1">
+              <span className="mr-auto text-xs text-muted-foreground">
+                Arrastrá el borde de una columna para ajustar su ancho
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => nudge(-1)}
+                title="Desplazar a la izquierda"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => nudge(1)}
+                title="Desplazar a la derecha"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <div ref={scrollRef} className="overflow-x-auto">
             <Table>
+              <colgroup>
+                {COLS.filter((c) => show(c.key)).map((c) => (
+                  <col key={c.key} />
+                ))}
+                <col style={{ width: "40px" }} />
+              </colgroup>
               <TableHeader>
                 <TableRow>
                   {show("hora") && (
@@ -512,6 +625,7 @@ export function TurnosDelDia() {
                   )}
                   {show("sala") && <TableHead className="w-24">Ingreso a sala</TableHead>}
                   {show("finalizado") && <TableHead className="w-24">Finalización</TableHead>}
+                  {show("retiro") && <TableHead className="w-24">Retiro</TableHead>}
                   {show("paciente") && <SortHead k="paciente">Paciente</SortHead>}
                   {show("obraSocial") && <SortHead k="obraSocial">Obra social</SortHead>}
                   {show("telefono") && <TableHead>Teléfono</TableHead>}
@@ -577,6 +691,11 @@ export function TurnosDelDia() {
                       {show("finalizado") && (
                         <TableCell className="tabular-nums text-sm">
                           {t.finalizadoHora ?? "—"}
+                        </TableCell>
+                      )}
+                      {show("retiro") && (
+                        <TableCell className="tabular-nums text-sm">
+                          {t.retiroHora ?? "—"}
                         </TableCell>
                       )}
                       {show("paciente") && (
@@ -692,7 +811,7 @@ export function TurnosDelDia() {
                               <SelectValue placeholder="Sin marcar" />
                             </SelectTrigger>
                             <SelectContent>
-                              {ESTADOS.map((e) => (
+                              {ESTADOS.filter((e) => e.value !== "cancelado").map((e) => (
                                 <SelectItem key={e.value} value={e.value}>
                                   <span className="inline-flex items-center gap-2">
                                     <span className={cn("h-2.5 w-2.5 rounded-full", e.dot)} />
@@ -748,6 +867,20 @@ export function TurnosDelDia() {
                             <DropdownMenuItem onSelect={() => setModal({ row: t, modo: "editar" })}>
                               <Pencil className="mr-2 h-4 w-4" /> Editar
                             </DropdownMenuItem>
+                            {t.estado !== "cancelado" && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onSelect={() => {
+                                    setCancelarRow(t);
+                                    setCancelMotivo("");
+                                  }}
+                                >
+                                  <Ban className="mr-2 h-4 w-4" /> Cancelar turno
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -756,6 +889,7 @@ export function TurnosDelDia() {
                 })}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -775,6 +909,40 @@ export function TurnosDelDia() {
           }}
         />
       )}
+
+      <Dialog open={!!cancelarRow} onOpenChange={(o) => !o && setCancelarRow(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancelar turno</DialogTitle>
+          </DialogHeader>
+          {cancelarRow && (
+            <p className="text-sm text-muted-foreground">
+              Se cancelará el turno de <b>{cancelarRow.paciente}</b>
+              {cancelarRow.hora ? ` (${cancelarRow.hora})` : ""}. El paciente no recibirá recordatorios.
+            </p>
+          )}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Motivo (opcional)</Label>
+            <Input
+              value={cancelMotivo}
+              onChange={(e) => setCancelMotivo(e.target.value)}
+              placeholder="Ej: el paciente avisó que no puede venir"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelarRow(null)}>
+              Volver
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={cancelar.isPending}
+              onClick={() => cancelar.mutate({ row: cancelarRow, motivo: cancelMotivo.trim() })}
+            >
+              {cancelar.isPending ? "Cancelando…" : "Cancelar turno"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1029,6 +1197,7 @@ function EditarTurnoDialog({
     llegadaHora: row.llegadaHora ?? "",
     salaHora: row.salaHora ?? "",
     finalizadoHora: row.finalizadoHora ?? "",
+    retiroHora: row.retiroHora ?? "",
   }));
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -1059,6 +1228,7 @@ function EditarTurnoDialog({
             llegadaHora: form.llegadaHora,
             salaHora: form.salaHora,
             finalizadoHora: form.finalizadoHora,
+            retiroHora: form.retiroHora,
           } as any,
         });
       }
@@ -1082,6 +1252,7 @@ function EditarTurnoDialog({
         llegadaHora: form.llegadaHora,
         salaHora: form.salaHora,
         finalizadoHora: form.finalizadoHora,
+        retiroHora: form.retiroHora,
       };
       // Reprogramación: solo si cambió la hora de la cita.
       if (form.horaCita && form.horaCita !== (row.hora ?? "")) {
@@ -1333,6 +1504,14 @@ function EditarTurnoDialog({
               type="time"
               value={form.finalizadoHora}
               onChange={(e) => set("finalizadoHora", e.target.value)}
+              disabled={ver}
+            />
+          </Campo>
+          <Campo label="Hora de retiro">
+            <Input
+              type="time"
+              value={form.retiroHora}
+              onChange={(e) => set("retiroHora", e.target.value)}
               disabled={ver}
             />
           </Campo>

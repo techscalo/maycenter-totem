@@ -296,7 +296,8 @@ export const turnoAsistencias = pgTable("turno_asistencias", {
   fecha: date("fecha").notNull(),
   // Deprecado en favor de `estado`; se conserva por compatibilidad de datos.
   asistio: boolean("asistio").notNull().default(true),
-  // Flujo del turno: en_recepcion | en_consultorio | finalizado | ausente (null = sin marcar).
+  // Flujo del turno: en_recepcion | en_consultorio | finalizado | ausente | se_retiro | cancelado
+  // (null = sin marcar).
   estado: text("estado"),
   // Hora de ingreso a la sala de atención (se setea al marcar "En sala" / en_consultorio, una vez).
   // Distinta del ingreso a la clínica (arrivals.created_at del tótem).
@@ -306,6 +307,10 @@ export const turnoAsistencias = pgTable("turno_asistencias", {
   llegadaAt: timestamp("llegada_at", { withTimezone: true }),
   // Hora en que se marcó "Finalizado" (una vez, no se pisa).
   finalizadoAt: timestamp("finalizado_at", { withTimezone: true }),
+  // Hora en que el paciente "Se retiró" (vino pero se fue; una vez, no se pisa).
+  retiroAt: timestamp("retiro_at", { withTimezone: true }),
+  // Motivo (opcional) cuando el turno se cancela desde recepción.
+  cancelMotivo: text("cancel_motivo"),
   // Odontólogo que realmente atendió, cuando difiere del de la agenda (calendario GHL).
   // null = se atendió con el de la agenda.
   odontologoACargoId: uuid("odontologo_a_cargo_id").references(() => odontologos.id, {
@@ -356,6 +361,10 @@ export const turnosManuales = pgTable(
     salaAt: timestamp("sala_at", { withTimezone: true }),
     // Hora en que se marcó "Finalizado" (una vez, no se pisa).
     finalizadoAt: timestamp("finalizado_at", { withTimezone: true }),
+    // Hora en que el paciente "Se retiró" (vino pero se fue; una vez, no se pisa).
+    retiroAt: timestamp("retiro_at", { withTimezone: true }),
+    // Motivo (opcional) cuando el turno se cancela desde recepción.
+    cancelMotivo: text("cancel_motivo"),
     marcadoPor: text("marcado_por"),
     createdBy: text("created_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
