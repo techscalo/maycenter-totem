@@ -97,12 +97,37 @@ type SortKey =
 
 // Estados de flujo del turno + estilos.
 const ESTADOS = [
-  { value: "en_recepcion", label: "En recepción", dot: "bg-yellow-400", row: "bg-yellow-50 dark:bg-yellow-950/20" },
-  { value: "en_consultorio", label: "En sala", dot: "bg-sky-400", row: "bg-sky-50 dark:bg-sky-950/20" },
-  { value: "finalizado", label: "Finalizado", dot: "bg-green-500", row: "bg-green-50 dark:bg-green-950/20" },
-  { value: "se_retiro", label: "Se retiró", dot: "bg-orange-400", row: "bg-orange-50 dark:bg-orange-950/20" },
+  {
+    value: "en_recepcion",
+    label: "En recepción",
+    dot: "bg-yellow-400",
+    row: "bg-yellow-50 dark:bg-yellow-950/20",
+  },
+  {
+    value: "en_consultorio",
+    label: "En sala",
+    dot: "bg-sky-400",
+    row: "bg-sky-50 dark:bg-sky-950/20",
+  },
+  {
+    value: "finalizado",
+    label: "Finalizado",
+    dot: "bg-green-500",
+    row: "bg-green-50 dark:bg-green-950/20",
+  },
+  {
+    value: "se_retiro",
+    label: "Se retiró",
+    dot: "bg-orange-400",
+    row: "bg-orange-50 dark:bg-orange-950/20",
+  },
   { value: "ausente", label: "Ausente", dot: "bg-gray-400", row: "opacity-60" },
-  { value: "cancelado", label: "Cancelado", dot: "bg-red-500", row: "bg-red-50 dark:bg-red-950/20 opacity-70" },
+  {
+    value: "cancelado",
+    label: "Cancelado",
+    dot: "bg-red-500",
+    row: "bg-red-50 dark:bg-red-950/20 opacity-70",
+  },
 ] as const;
 const ESTADO_MAP = Object.fromEntries(ESTADOS.map((e) => [e.value, e]));
 
@@ -131,7 +156,9 @@ const COLS = [
 const COLS_STORAGE = "turnos_cols_v1";
 
 function defaultCols(): Record<string, boolean> {
-  return Object.fromEntries(COLS.map((c) => [c.key, !("hiddenByDefault" in c && c.hiddenByDefault)]));
+  return Object.fromEntries(
+    COLS.map((c) => [c.key, !("hiddenByDefault" in c && c.hiddenByDefault)]),
+  );
 }
 
 export function TurnosDelDia() {
@@ -417,7 +444,15 @@ export function TurnosDelDia() {
     );
   }, [turnos, q, agendaFiltro, pisoFiltro, estadoFiltro, sort, odontologos]);
 
-  const SortHead = ({ k, children, className }: { k: SortKey; children: any; className?: string }) => (
+  const SortHead = ({
+    k,
+    children,
+    className,
+  }: {
+    k: SortKey;
+    children: any;
+    className?: string;
+  }) => (
     <TableHead className={className}>
       <button
         type="button"
@@ -642,318 +677,336 @@ export function TurnosDelDia() {
               </Button>
             </div>
             <div ref={scrollRef}>
-            <Table className="[&_th]:border-r [&_th]:border-border [&_td]:border-r [&_td]:border-border [&_th:last-child]:border-r-0 [&_td:last-child]:border-r-0">
-              <colgroup>
-                {COLS.filter((c) => show(c.key)).map((c) => (
-                  <col key={c.key} />
-                ))}
-                <col style={{ width: "40px" }} />
-              </colgroup>
-              <TableHeader>
-                <TableRow>
-                  {show("hora") && (
-                    <SortHead k="startTime" className="w-16">
-                      Hora
-                    </SortHead>
-                  )}
-                  {show("llegada") && (
-                    <SortHead k="llegadaHora" className="w-20">
-                      Llegada
-                    </SortHead>
-                  )}
-                  {show("sala") && <TableHead className="w-24">Ingreso a sala</TableHead>}
-                  {show("finalizado") && <TableHead className="w-24">Finalización</TableHead>}
-                  {show("retiro") && <TableHead className="w-24">Retiro</TableHead>}
-                  {show("paciente") && <SortHead k="paciente">Paciente</SortHead>}
-                  {show("obraSocial") && <SortHead k="obraSocial">Obra social</SortHead>}
-                  {show("telefono") && <TableHead>Teléfono</TableHead>}
-                  {show("agenda") && <SortHead k="profesional">Agenda</SortHead>}
-                  {show("piso") && <TableHead className="w-28">Piso</TableHead>}
-                  {show("odontologoACargo") && <TableHead className="w-48">Odontólogo a cargo</TableHead>}
-                  {show("dni") && <SortHead k="dni">DNI</SortHead>}
-                  {show("agendadoPor") && <SortHead k="agendadoPor">Agendado por</SortHead>}
-                  {show("descripcion") && <TableHead>Descripción</TableHead>}
-                  {show("observaciones") && <TableHead>Observaciones</TableHead>}
-                  {show("tieneFicha") && <TableHead>Ficha</TableHead>}
-                  {show("estado") && (
-                    <SortHead k="estado" className="w-44">
-                      Estado
-                    </SortHead>
-                  )}
-                  {show("ficha") && <TableHead className="text-center">Ficha GHL</TableHead>}
-                  {show("pacienteContacto") && <TableHead>Paciente que reservó</TableHead>}
-                  <TableHead className="w-10" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading && (
+              <Table className="[&_th]:border-r [&_th]:border-border [&_td]:border-r [&_td]:border-border [&_th:last-child]:border-r-0 [&_td:last-child]:border-r-0">
+                <colgroup>
+                  {COLS.filter((c) => show(c.key)).map((c) => (
+                    <col key={c.key} />
+                  ))}
+                  <col style={{ width: "40px" }} />
+                </colgroup>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={colCount} className="text-center py-10 text-muted-foreground">
-                      Cargando turnos…
-                    </TableCell>
+                    {show("hora") && (
+                      <SortHead k="startTime" className="w-16">
+                        Hora
+                      </SortHead>
+                    )}
+                    {show("llegada") && (
+                      <SortHead k="llegadaHora" className="w-20">
+                        Llegada
+                      </SortHead>
+                    )}
+                    {show("sala") && <TableHead className="w-24">Ingreso a sala</TableHead>}
+                    {show("finalizado") && <TableHead className="w-24">Finalización</TableHead>}
+                    {show("retiro") && <TableHead className="w-24">Retiro</TableHead>}
+                    {show("paciente") && <SortHead k="paciente">Paciente</SortHead>}
+                    {show("obraSocial") && <SortHead k="obraSocial">Obra social</SortHead>}
+                    {show("telefono") && <TableHead>Teléfono</TableHead>}
+                    {show("agenda") && <SortHead k="profesional">Agenda</SortHead>}
+                    {show("piso") && <TableHead className="w-28">Piso</TableHead>}
+                    {show("odontologoACargo") && (
+                      <TableHead className="w-48">Odontólogo a cargo</TableHead>
+                    )}
+                    {show("dni") && <SortHead k="dni">DNI</SortHead>}
+                    {show("agendadoPor") && <SortHead k="agendadoPor">Agendado por</SortHead>}
+                    {show("descripcion") && <TableHead>Descripción</TableHead>}
+                    {show("observaciones") && <TableHead>Observaciones</TableHead>}
+                    {show("tieneFicha") && <TableHead>Ficha</TableHead>}
+                    {show("estado") && (
+                      <SortHead k="estado" className="w-44">
+                        Estado
+                      </SortHead>
+                    )}
+                    {show("ficha") && <TableHead className="text-center">Ficha GHL</TableHead>}
+                    {show("pacienteContacto") && <TableHead>Paciente que reservó</TableHead>}
+                    <TableHead className="w-10" />
                   </TableRow>
-                )}
-                {!isLoading && rows.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={colCount} className="text-center py-10 text-muted-foreground">
-                      Sin turnos para esta fecha.
-                    </TableCell>
-                  </TableRow>
-                )}
-                {rows.map((t) => {
-                  const est = t.estado ? ESTADO_MAP[t.estado] : null;
-                  return (
-                    <TableRow key={t.rowId} className={est?.row ?? ""}>
-                      {show("hora") && (
-                        <TableCell className="font-semibold tabular-nums">
-                          {t.hora ?? (
-                            <Badge
-                              variant="secondary"
-                              title="Sin turno (se atiende por orden de llegada)"
-                            >
-                              ST
-                            </Badge>
-                          )}
-                        </TableCell>
-                      )}
-                      {show("llegada") && (
-                        <TableCell className="tabular-nums text-sm">
-                          {t.llegadaHora ?? "—"}
-                        </TableCell>
-                      )}
-                      {show("sala") && (
-                        <TableCell className="tabular-nums text-sm">
-                          {t.salaHora ?? "—"}
-                        </TableCell>
-                      )}
-                      {show("finalizado") && (
-                        <TableCell className="tabular-nums text-sm">
-                          {t.finalizadoHora ?? "—"}
-                        </TableCell>
-                      )}
-                      {show("retiro") && (
-                        <TableCell className="tabular-nums text-sm">
-                          {t.retiroHora ?? "—"}
-                        </TableCell>
-                      )}
-                      {show("paciente") && (
-                        <TableCell className="font-medium">{t.paciente}</TableCell>
-                      )}
-                      {show("obraSocial") && (
-                        <TableCell className="text-sm">{t.obraSocial ?? "—"}</TableCell>
-                      )}
-                      {show("telefono") && (
-                        <TableCell className="text-sm text-muted-foreground">
-                          {t.telefono ?? "—"}
-                        </TableCell>
-                      )}
-                      {show("agenda") && <TableCell className="text-sm">{t.profesional}</TableCell>}
-                      {show("piso") && (
-                        <TableCell>
-                          <Select
-                            value={pisoDeTurno(t) ?? NONE}
-                            onValueChange={(v) =>
-                              cambiarPiso.mutate({ row: t, pisoId: v === NONE ? null : v })
-                            }
-                          >
-                            <SelectTrigger className="h-8 w-28">
-                              <SelectValue placeholder="—" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={NONE}>
-                                <span className="text-muted-foreground">Automático</span>
-                              </SelectItem>
-                              {(pisos ?? []).map((p: any) => (
-                                <SelectItem key={p.id} value={p.id}>
-                                  {p.nombre}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      )}
-                      {show("odontologoACargo") && (
-                        <TableCell>
-                          <Select
-                            value={t.odontologoACargoId ?? NONE}
-                            onValueChange={(v) =>
-                              cambiarACargo.mutate({
-                                row: t,
-                                odontologoACargoId: v === NONE ? null : v,
-                              })
-                            }
-                          >
-                            <SelectTrigger className="h-8 w-44">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={NONE}>
-                                <span className="text-muted-foreground">
-                                  {odontologoDeAgenda(t.profesional) ?? "Según agenda"}
-                                </span>
-                              </SelectItem>
-                              {(odontologos ?? []).map((o: any) => (
-                                <SelectItem key={o.id} value={o.id}>
-                                  {o.nombre}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      )}
-                      {show("dni") && (
-                        <TableCell className="tabular-nums">{t.dni ?? "—"}</TableCell>
-                      )}
-                      {show("agendadoPor") && (
-                        <TableCell className="text-sm">
-                          {t.origen === "Autoagenda" ? (
-                            <Badge className="bg-primary/15 text-primary border-primary/30 hover:bg-primary/15">
-                              <Sparkles className="h-3 w-3 mr-1" /> Autoagenda
-                            </Badge>
-                          ) : (
-                            <>
-                              <div>{t.agendadoPor}</div>
-                              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                {t.origen}
-                              </div>
-                            </>
-                          )}
-                        </TableCell>
-                      )}
-                      {show("descripcion") && (
-                        <TableCell className="text-sm text-muted-foreground max-w-[220px]">
-                          {t.descripcion ? (
-                            <span className="whitespace-pre-wrap break-words" title={t.descripcion}>
-                              {t.descripcion}
-                            </span>
-                          ) : (
-                            "—"
-                          )}
-                        </TableCell>
-                      )}
-                      {show("observaciones") && (
-                        <TableCell className="text-sm text-muted-foreground max-w-[220px]">
-                          {t.observaciones ? (
-                            <span className="whitespace-pre-wrap break-words" title={t.observaciones}>
-                              {t.observaciones}
-                            </span>
-                          ) : (
-                            "—"
-                          )}
-                        </TableCell>
-                      )}
-                      {show("tieneFicha") && (
-                        <TableCell>
-                          <Select
-                            value={t.ficha ?? undefined}
-                            onValueChange={(v) => cambiarFicha.mutate({ row: t, valor: v })}
-                          >
-                            <SelectTrigger className="h-8 w-36">
-                              <SelectValue placeholder="Sin definir" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Tiene Ficha">Tiene Ficha</SelectItem>
-                              <SelectItem value="No tiene ficha">No tiene ficha</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      )}
-                      {show("estado") && (
-                        <TableCell>
-                          <Select
-                            value={t.estado ?? undefined}
-                            onValueChange={(v) => {
-                              // "Cancelado" no se marca directo: abre el diálogo para el motivo opcional.
-                              if (v === "cancelado") {
-                                setCancelarRow(t);
-                                setCancelMotivo("");
-                              } else {
-                                cambiarEstado.mutate({ row: t, estado: v });
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="h-8 w-40">
-                              <SelectValue placeholder="Sin marcar" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {ESTADOS.map((e) => (
-                                <SelectItem key={e.value} value={e.value}>
-                                  <span className="inline-flex items-center gap-2">
-                                    <span className={cn("h-2.5 w-2.5 rounded-full", e.dot)} />
-                                    {e.label}
-                                  </span>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      )}
-                      {show("ficha") && (
-                        <TableCell className="text-center">
-                          {t.tipo === "manual" ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (confirm(`¿Eliminar el turno manual de ${t.paciente}?`))
-                                  eliminar.mutate(t.id);
-                              }}
-                              className="inline-flex items-center justify-center text-muted-foreground hover:text-destructive"
-                              title="Eliminar turno manual"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          ) : (
-                            <a
-                              href={t.contactoUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center justify-center text-primary hover:text-primary/80"
-                              title="Abrir ficha en GHL"
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </a>
-                          )}
-                        </TableCell>
-                      )}
-                      {show("pacienteContacto") && (
-                        <TableCell className="text-sm">{t.pacienteContacto ?? "—"}</TableCell>
-                      )}
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => setModal({ row: t, modo: "ver" })}>
-                              <Eye className="mr-2 h-4 w-4" /> Ver
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => setModal({ row: t, modo: "editar" })}>
-                              <Pencil className="mr-2 h-4 w-4" /> Editar
-                            </DropdownMenuItem>
-                            {t.estado !== "cancelado" && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="text-destructive focus:text-destructive"
-                                  onSelect={() => {
-                                    setCancelarRow(t);
-                                    setCancelMotivo("");
-                                  }}
-                                >
-                                  <Ban className="mr-2 h-4 w-4" /> Cancelar turno
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                </TableHeader>
+                <TableBody>
+                  {isLoading && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={colCount}
+                        className="text-center py-10 text-muted-foreground"
+                      >
+                        Cargando turnos…
                       </TableCell>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                  )}
+                  {!isLoading && rows.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={colCount}
+                        className="text-center py-10 text-muted-foreground"
+                      >
+                        Sin turnos para esta fecha.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {rows.map((t) => {
+                    const est = t.estado ? ESTADO_MAP[t.estado] : null;
+                    return (
+                      <TableRow key={t.rowId} className={est?.row ?? ""}>
+                        {show("hora") && (
+                          <TableCell className="font-semibold tabular-nums">
+                            {t.hora ?? (
+                              <Badge
+                                variant="secondary"
+                                title="Sin turno (se atiende por orden de llegada)"
+                              >
+                                ST
+                              </Badge>
+                            )}
+                          </TableCell>
+                        )}
+                        {show("llegada") && (
+                          <TableCell className="tabular-nums text-sm">
+                            {t.llegadaHora ?? "—"}
+                          </TableCell>
+                        )}
+                        {show("sala") && (
+                          <TableCell className="tabular-nums text-sm">
+                            {t.salaHora ?? "—"}
+                          </TableCell>
+                        )}
+                        {show("finalizado") && (
+                          <TableCell className="tabular-nums text-sm">
+                            {t.finalizadoHora ?? "—"}
+                          </TableCell>
+                        )}
+                        {show("retiro") && (
+                          <TableCell className="tabular-nums text-sm">
+                            {t.retiroHora ?? "—"}
+                          </TableCell>
+                        )}
+                        {show("paciente") && (
+                          <TableCell className="font-medium">{t.paciente}</TableCell>
+                        )}
+                        {show("obraSocial") && (
+                          <TableCell className="text-sm">{t.obraSocial ?? "—"}</TableCell>
+                        )}
+                        {show("telefono") && (
+                          <TableCell className="text-sm text-muted-foreground">
+                            {t.telefono ?? "—"}
+                          </TableCell>
+                        )}
+                        {show("agenda") && (
+                          <TableCell className="text-sm">{t.profesional}</TableCell>
+                        )}
+                        {show("piso") && (
+                          <TableCell>
+                            <Select
+                              value={pisoDeTurno(t) ?? NONE}
+                              onValueChange={(v) =>
+                                cambiarPiso.mutate({ row: t, pisoId: v === NONE ? null : v })
+                              }
+                            >
+                              <SelectTrigger className="h-8 w-28">
+                                <SelectValue placeholder="—" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={NONE}>
+                                  <span className="text-muted-foreground">Automático</span>
+                                </SelectItem>
+                                {(pisos ?? []).map((p: any) => (
+                                  <SelectItem key={p.id} value={p.id}>
+                                    {p.nombre}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        )}
+                        {show("odontologoACargo") && (
+                          <TableCell>
+                            <Select
+                              value={t.odontologoACargoId ?? NONE}
+                              onValueChange={(v) =>
+                                cambiarACargo.mutate({
+                                  row: t,
+                                  odontologoACargoId: v === NONE ? null : v,
+                                })
+                              }
+                            >
+                              <SelectTrigger className="h-8 w-44">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={NONE}>
+                                  <span className="text-muted-foreground">
+                                    {odontologoDeAgenda(t.profesional) ?? "Según agenda"}
+                                  </span>
+                                </SelectItem>
+                                {(odontologos ?? []).map((o: any) => (
+                                  <SelectItem key={o.id} value={o.id}>
+                                    {o.nombre}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        )}
+                        {show("dni") && (
+                          <TableCell className="tabular-nums">{t.dni ?? "—"}</TableCell>
+                        )}
+                        {show("agendadoPor") && (
+                          <TableCell className="text-sm">
+                            {t.origen === "Autoagenda" ? (
+                              <Badge className="bg-primary/15 text-primary border-primary/30 hover:bg-primary/15">
+                                <Sparkles className="h-3 w-3 mr-1" /> Autoagenda
+                              </Badge>
+                            ) : (
+                              <>
+                                <div>{t.agendadoPor}</div>
+                                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                  {t.origen}
+                                </div>
+                              </>
+                            )}
+                          </TableCell>
+                        )}
+                        {show("descripcion") && (
+                          <TableCell className="text-sm text-muted-foreground max-w-[220px]">
+                            {t.descripcion ? (
+                              <span
+                                className="whitespace-pre-wrap break-words"
+                                title={t.descripcion}
+                              >
+                                {t.descripcion}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
+                          </TableCell>
+                        )}
+                        {show("observaciones") && (
+                          <TableCell className="text-sm text-muted-foreground max-w-[220px]">
+                            {t.observaciones ? (
+                              <span
+                                className="whitespace-pre-wrap break-words"
+                                title={t.observaciones}
+                              >
+                                {t.observaciones}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
+                          </TableCell>
+                        )}
+                        {show("tieneFicha") && (
+                          <TableCell>
+                            <Select
+                              value={t.ficha ?? undefined}
+                              onValueChange={(v) => cambiarFicha.mutate({ row: t, valor: v })}
+                            >
+                              <SelectTrigger className="h-8 w-36">
+                                <SelectValue placeholder="Sin definir" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Tiene Ficha">Tiene Ficha</SelectItem>
+                                <SelectItem value="No tiene ficha">No tiene ficha</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        )}
+                        {show("estado") && (
+                          <TableCell>
+                            <Select
+                              value={t.estado ?? undefined}
+                              onValueChange={(v) => {
+                                // "Cancelado" no se marca directo: abre el diálogo para el motivo opcional.
+                                if (v === "cancelado") {
+                                  setCancelarRow(t);
+                                  setCancelMotivo("");
+                                } else {
+                                  cambiarEstado.mutate({ row: t, estado: v });
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-8 w-40">
+                                <SelectValue placeholder="Sin marcar" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ESTADOS.map((e) => (
+                                  <SelectItem key={e.value} value={e.value}>
+                                    <span className="inline-flex items-center gap-2">
+                                      <span className={cn("h-2.5 w-2.5 rounded-full", e.dot)} />
+                                      {e.label}
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                        )}
+                        {show("ficha") && (
+                          <TableCell className="text-center">
+                            {t.tipo === "manual" ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`¿Eliminar el turno manual de ${t.paciente}?`))
+                                    eliminar.mutate(t.id);
+                                }}
+                                className="inline-flex items-center justify-center text-muted-foreground hover:text-destructive"
+                                title="Eliminar turno manual"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            ) : (
+                              <a
+                                href={t.contactoUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center justify-center text-primary hover:text-primary/80"
+                                title="Abrir ficha en GHL"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </a>
+                            )}
+                          </TableCell>
+                        )}
+                        {show("pacienteContacto") && (
+                          <TableCell className="text-sm">{t.pacienteContacto ?? "—"}</TableCell>
+                        )}
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={() => setModal({ row: t, modo: "ver" })}>
+                                <Eye className="mr-2 h-4 w-4" /> Ver
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => setModal({ row: t, modo: "editar" })}
+                              >
+                                <Pencil className="mr-2 h-4 w-4" /> Editar
+                              </DropdownMenuItem>
+                              {t.estado !== "cancelado" && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onSelect={() => {
+                                      setCancelarRow(t);
+                                      setCancelMotivo("");
+                                    }}
+                                  >
+                                    <Ban className="mr-2 h-4 w-4" /> Cancelar turno
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           </CardContent>
         </Card>
@@ -983,7 +1036,8 @@ export function TurnosDelDia() {
           {cancelarRow && (
             <p className="text-sm text-muted-foreground">
               Se cancelará el turno de <b>{cancelarRow.paciente}</b>
-              {cancelarRow.hora ? ` (${cancelarRow.hora})` : ""}. El paciente no recibirá recordatorios.
+              {cancelarRow.hora ? ` (${cancelarRow.hora})` : ""}. El paciente no recibirá
+              recordatorios.
             </p>
           )}
           <div className="space-y-1.5">
@@ -1033,6 +1087,7 @@ function NuevoTurnoDialog({
     telefono: "",
     obraSocialId: NONE,
     odontologoId: NONE,
+    pisoId: NONE,
     motivo: "",
   });
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -1046,6 +1101,11 @@ function NuevoTurnoDialog({
     enabled: open && !!sucursalId,
     queryKey: ["odontologos-turno", sucursalId],
     queryFn: () => listOdontologos({ data: { sucursalId, soloActivos: true } as any }),
+  });
+  const { data: pisos } = useQuery({
+    enabled: open && !!sucursalId,
+    queryKey: ["pisos-turno", sucursalId],
+    queryFn: () => listPisos({ data: { sucursalId } as any }),
   });
   const { data: obrasSociales } = useQuery({
     enabled: open,
@@ -1064,7 +1124,8 @@ function NuevoTurnoDialog({
           ...f,
           pacienteNombre: f.pacienteNombre || p.nombre,
           telefono: f.telefono || (p.telefono ?? ""),
-          obraSocialId: f.obraSocialId === NONE && p.obra_social_id ? p.obra_social_id : f.obraSocialId,
+          obraSocialId:
+            f.obraSocialId === NONE && p.obra_social_id ? p.obra_social_id : f.obraSocialId,
         }));
     } catch {
       /* silencioso: si falla, se carga a mano */
@@ -1083,6 +1144,7 @@ function NuevoTurnoDialog({
           telefono: form.telefono.trim() || null,
           obraSocialId: form.obraSocialId === NONE ? null : form.obraSocialId,
           odontologoId: form.odontologoId === NONE ? null : form.odontologoId,
+          pisoId: form.pisoId === NONE ? null : form.pisoId,
           motivo: form.motivo.trim() || null,
         } as any,
       }),
@@ -1098,6 +1160,7 @@ function NuevoTurnoDialog({
         telefono: "",
         obraSocialId: NONE,
         odontologoId: NONE,
+        pisoId: NONE,
         motivo: "",
       });
       onCreated();
@@ -1107,7 +1170,11 @@ function NuevoTurnoDialog({
 
   const dniOk = isValidDni(form.dni);
   const puedeGuardar =
-    !!sucursalId && (st || !!form.hora) && !!form.pacienteNombre.trim() && dniOk && !crear.isPending;
+    !!sucursalId &&
+    (st || !!form.hora) &&
+    !!form.pacienteNombre.trim() &&
+    dniOk &&
+    !crear.isPending;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -1152,9 +1219,7 @@ function NuevoTurnoDialog({
               onBlur={onDniBlur}
               placeholder="Sin puntos"
             />
-            {form.dni && !dniOk && (
-              <p className="text-[11px] text-destructive mt-1">{DNI_ERROR}</p>
-            )}
+            {form.dni && !dniOk && <p className="text-[11px] text-destructive mt-1">{DNI_ERROR}</p>}
           </div>
           <div>
             <Label className="text-xs">Paciente</Label>
@@ -1184,7 +1249,7 @@ function NuevoTurnoDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="col-span-2">
+          <div>
             <Label className="text-xs">Odontólogo / agenda</Label>
             <Select value={form.odontologoId} onValueChange={(v) => set("odontologoId", v)}>
               <SelectTrigger>
@@ -1195,6 +1260,22 @@ function NuevoTurnoDialog({
                 {(odontologos ?? []).map((o: any) => (
                   <SelectItem key={o.id} value={o.id}>
                     {o.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Piso</Label>
+            <Select value={form.pisoId} onValueChange={(v) => set("pisoId", v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sin asignar" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Sin asignar</SelectItem>
+                {(pisos ?? []).map((p: any) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.nombre}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1339,15 +1420,7 @@ function EditarTurnoDialog({
     onError: (e) => toast.error((e as Error).message || "No se pudo actualizar el turno"),
   });
 
-  const Campo = ({
-    label,
-    children,
-    full,
-  }: {
-    label: string;
-    children: any;
-    full?: boolean;
-  }) => (
+  const Campo = ({ label, children, full }: { label: string; children: any; full?: boolean }) => (
     <div className={full ? "col-span-2" : ""}>
       <Label className="text-xs">{label}</Label>
       {children}
@@ -1445,7 +1518,11 @@ function EditarTurnoDialog({
             />
           </Campo>
           <Campo label="Ficha">
-            <Select value={form.ficha || NONE} onValueChange={(v) => set("ficha", v === NONE ? "" : v)} disabled={ver}>
+            <Select
+              value={form.ficha || NONE}
+              onValueChange={(v) => set("ficha", v === NONE ? "" : v)}
+              disabled={ver}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Sin definir" />
               </SelectTrigger>
@@ -1514,7 +1591,11 @@ function EditarTurnoDialog({
             </Select>
           </Campo>
           <Campo label="Estado">
-            <Select value={form.estado || NONE} onValueChange={(v) => set("estado", v === NONE ? "" : v)} disabled={ver}>
+            <Select
+              value={form.estado || NONE}
+              onValueChange={(v) => set("estado", v === NONE ? "" : v)}
+              disabled={ver}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Sin marcar" />
               </SelectTrigger>

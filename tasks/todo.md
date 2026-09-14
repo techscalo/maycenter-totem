@@ -322,3 +322,30 @@ Código + migración completos, build/typecheck OK, flujo verificado contra la D
 `src/db/schema.ts`, `drizzle/0018_turnos_manuales_st_ficha.sql`,
 `src/lib/gestion/ghl.server.ts`, `src/components/gestion/TurnosDelDia.tsx`.
 Pendiente: validación en navegador + deploy.
+
+---
+
+# Tanda Recepción 4 (14/09/2026) — piso en alta manual + página Métricas
+
+Plan: `~/.claude/plans/declarative-wibbling-quasar.md`. Decisiones Dylan: métricas de citas
+sobre **base + GHL en vivo**; última asistencia como **tabla/ranking + buscador** en Métricas.
+Sin migraciones (columna `turnos_manuales.piso_id` ya existe).
+
+## Tarea 1 — Piso en el alta manual de turnos ✅
+- [x] `crearTurnoManual` (`ghl.server.ts`): `pisoId` en validator + insert.
+- [x] `NuevoTurnoDialog` (`TurnosDelDia.tsx`): select de Piso (listPisos) + pasar en el mutation.
+
+## Tarea 2 — Página de Métricas ✅ (código)
+- [x] Deep-link tabs: `validateSearch ?tab=` (opcional, default llegadas) en `_app.gestion.recepcion.tsx` + Tabs controlado + tercer tab Métricas.
+- [x] `metrics.server.ts` (nuevo): `getMetricasRecepcion` (turnos GHL vivo por rango + manuales, estado efectivo unificado, agregados por estado/OS/día/día-semana/profesional/fuente) + `getUltimaAsistenciaPacientes` (100% DB: arrivals + turnos manuales por DNI).
+- [x] `MetricasPanel.tsx` (nuevo): período (mes/mes anterior/custom), 6 KPIs, 6 charts recharts, ranking+buscador+orden.
+- [x] `downloadMetricsPdf` (`exports.ts`): PDF A4 branding Maycenter con KPIs + charts (SVG→canvas→PNG) + 3 tablas (OS, estado, ranking).
+- [x] Helpers de `ghl.server.ts` exportados/reusados: `ghlConfigForSlug`, `listRangeEvents` (extraído de `listDayEvents`), `resolveContactos`, `estadoDesdeGhl`, `onlyDigits`.
+
+## Verificación
+- [x] `bunx tsc --noEmit` limpio (exit 0). `bun run build` OK.
+- [x] Lint: los errores `no-explicit-any` son baseline del repo (el dashboard copiado tiene 12); prettier aplicado a los archivos tocados.
+- [x] Dev 8080 bootea limpio; `/` y `/gestion/recepcion?tab=metricas` → 200, sin errores SSR.
+- [ ] **Pendiente Dylan (requiere login en navegador):** alta manual con piso persiste; métricas coherentes vs Turnos del día; PDF generado y revisado a ojo (charts sin superposición, branding OK). Correr con:
+      `node --env-file=.env node_modules/.bin/vite dev --port 8080 --strictPort`
+- [ ] Commit + push a `main` cuando Dylan valide. Sin migraciones.

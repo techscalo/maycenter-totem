@@ -87,7 +87,7 @@ const GHL_BY_SLUG: Record<
   },
 };
 
-function ghlConfigForSlug(slug: string | null): GhlConfig | null {
+export function ghlConfigForSlug(slug: string | null): GhlConfig | null {
   if (!slug) return null;
   const entry = GHL_BY_SLUG[slug];
   if (!entry) return null;
@@ -209,7 +209,7 @@ async function addContactNote(cfg: GhlConfig, contactId: string, body: string) {
   if (!res.ok) throw new Error(`No se pudo agregar la nota en GHL (${res.status})`);
 }
 
-const onlyDigits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
+export const onlyDigits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
 
 // "HH:MM" (hora de Argentina) + fecha "YYYY-MM-DD" → Date. "" o null → null (limpia el valor).
 function horaARaDate(fecha: string, hhmm: string | null | undefined): Date | null {
@@ -220,7 +220,7 @@ function horaARaDate(fecha: string, hhmm: string | null | undefined): Date | nul
 
 // Espejo GHL → sistema: si la cita ya viene marcada en GHL, reflejarlo.
 // showed (asistió) → finalizado; noshow (no asistió) → ausente; el resto no mapea.
-function estadoDesdeGhl(appointmentStatus: string | null | undefined): string | null {
+export function estadoDesdeGhl(appointmentStatus: string | null | undefined): string | null {
   const s = (appointmentStatus ?? "").toLowerCase();
   if (s === "showed") return "finalizado";
   if (s === "noshow") return "ausente";
@@ -260,15 +260,15 @@ async function listCalendars(cfg: GhlConfig): Promise<{ id: string; name: string
   return cals;
 }
 
-async function listDayEvents(cfg: GhlConfig, fecha: string) {
-  const start = new Date(`${fecha}T00:00:00-03:00`).getTime();
-  const end = new Date(`${fecha}T23:59:59-03:00`).getTime();
+// Eventos de todos los calendarios de la location entre dos instantes (epoch ms).
+// Base de `listDayEvents` (un día) y de las métricas por rango (un mes).
+export async function listRangeEvents(cfg: GhlConfig, startMs: number, endMs: number) {
   const cals = await listCalendars(cfg);
   const calName = new Map(cals.map((c) => [c.id, c.name]));
   const perCal = await mapLimit(cals, 6, async (c) => {
     const data = await ghlFetch(
       cfg.pit,
-      `/calendars/events?locationId=${cfg.locationId}&calendarId=${c.id}&startTime=${start}&endTime=${end}`,
+      `/calendars/events?locationId=${cfg.locationId}&calendarId=${c.id}&startTime=${startMs}&endTime=${endMs}`,
     );
     return (data.events ?? []) as any[];
   });
@@ -290,8 +290,14 @@ async function listDayEvents(cfg: GhlConfig, fecha: string) {
     }));
 }
 
+async function listDayEvents(cfg: GhlConfig, fecha: string) {
+  const start = new Date(`${fecha}T00:00:00-03:00`).getTime();
+  const end = new Date(`${fecha}T23:59:59-03:00`).getTime();
+  return listRangeEvents(cfg, start, end);
+}
+
 // Nombre + teléfono + DNI de los contactos (dedup + paralelo).
-async function resolveContactos(cfg: GhlConfig, ids: string[]) {
+export async function resolveContactos(cfg: GhlConfig, ids: string[]) {
   const unique = [...new Set(ids)];
   const entries = await Promise.all(
     unique.map(async (id) => {
@@ -1136,6 +1142,7 @@ export const crearTurnoManual = createServerFn({ method: "POST" })
         telefono: z.string().trim().optional().nullable(),
         obraSocialId: z.string().uuid().optional().nullable(),
         odontologoId: z.string().uuid().optional().nullable(),
+        pisoId: z.string().uuid().optional().nullable(),
         motivo: z.string().trim().optional().nullable(),
       })
       .parse(i),
@@ -1156,6 +1163,7 @@ export const crearTurnoManual = createServerFn({ method: "POST" })
         telefono: data.telefono?.trim() || null,
         obraSocialId: data.obraSocialId || null,
         odontologoId: data.odontologoId || null,
+        pisoId: data.pisoId || null,
         motivo: data.motivo?.trim() || null,
         // El manual se carga con el paciente presente: se estampa la llegada al crear.
         llegadaAt: new Date(),
