@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import {
@@ -15,7 +15,7 @@ import {
 } from "recharts";
 import { getMetricasRecepcion, getUltimaAsistenciaPacientes } from "@/lib/gestion/metrics.server";
 import { useSucursalActiva } from "@/lib/gestion/sucursal-activa";
-import { downloadMetricsPdf } from "@/lib/gestion/exports";
+import { downloadMetricsPdf, downloadExcel } from "@/lib/gestion/exports";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +26,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Calendar, CalendarCheck, UserX, Ban, Users, FileDown, Search } from "lucide-react";
+import {
+  Calendar,
+  CalendarCheck,
+  UserX,
+  Ban,
+  Users,
+  FileDown,
+  FileSpreadsheet,
+  Search,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { toast } from "sonner";
 
 const COLORS = [
@@ -45,6 +59,15 @@ const COLORS = [
 ];
 
 type Rango = "mes" | "mes_anterior" | "custom";
+
+type RankRow = {
+  dni: string;
+  nombre: string;
+  ultimaAsistencia: string;
+  diasDesde: number;
+  visitas: number;
+};
+type RankKey = "nombre" | "dni" | "ultima" | "dias" | "visitas";
 
 function firstOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
@@ -81,8 +104,15 @@ export function MetricasPanel() {
   const [desde, setDesde] = useState(toDateInput(firstOfMonth(new Date())));
   const [hasta, setHasta] = useState(toDateInput(new Date()));
   const [q, setQ] = useState("");
-  const [ordenRanking, setOrdenRanking] = useState<"reciente" | "antiguo" | "visitas">("antiguo");
+  const [inactividad, setInactividad] = useState<"todos" | "30" | "60" | "90">("todos");
+  const [visitasFiltro, setVisitasFiltro] = useState<"todos" | "1" | "2" | "5">("todos");
+  const [sortRank, setSortRank] = useState<{ key: RankKey; dir: "asc" | "desc" }>({
+    key: "dias",
+    dir: "desc",
+  });
+  const [page, setPage] = useState(0);
   const [exportando, setExportando] = useState(false);
+  const PAGE_SIZE = 50;
 
   const {
     from,
@@ -108,19 +138,55 @@ export function MetricasPanel() {
   const m = metrics.data;
 
   const rankingFiltrado = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    const minDias = inactividad === "todos" ? 0 : Number(inactividad);
+    const minVisitas = visitasFiltro === "todos" ? 0 : Number(visitasFiltro);
     const base = (ranking.data ?? []).filter((r) => {
-      const term = q.trim().toLowerCase();
-      if (!term) return true;
-      return r.nombre.toLowerCase().includes(term) || r.dni.includes(term);
+      if (term && !r.nombre.toLowerCase().includes(term) && !r.dni.includes(term)) return false;
+      if (r.diasDesde < minDias) return false;
+      if (visitasFiltro === "1" && r.visitas !== 1) return false;
+      if (visitasFiltro !== "1" && r.visitas < minVisitas) return false;
+      return true;
     });
-    const sorted = [...base];
-    if (ordenRanking === "reciente")
-      sorted.sort((a, b) => b.ultimaAsistencia.localeCompare(a.ultimaAsistencia));
-    else if (ordenRanking === "antiguo")
-      sorted.sort((a, b) => a.ultimaAsistencia.localeCompare(b.ultimaAsistencia));
-    else sorted.sort((a, b) => b.visitas - a.visitas);
-    return sorted;
-  }, [ranking.data, q, ordenRanking]);
+    const dir = sortRank.dir === "asc" ? 1 : -1;
+    const cmp: Record<RankKey, (a: RankRow, b: RankRow) => number> = {
+      nombre: (a, b) => a.nombre.localeCompare(b.nombre),
+      dni: (a, b) => a.dni.localeCompare(b.dni),
+      ultima: (a, b) => a.ultimaAsistencia.localeCompare(b.ultimaAsistencia),
+      dias: (a, b) => a.diasDesde - b.diasDesde,
+      visitas: (a, b) => a.visitas - b.visitas,
+    };
+    return [...base].sort((a, b) => cmp[sortRank.key](a, b) * dir);
+  }, [ranking.data, q, inactividad, visitasFiltro, sortRank]);
+
+  // Al cambiar filtros/orden, volver a la primera página.
+  useEffect(() => setPage(0), [q, inactividad, visitasFiltro, sortRank]);
+
+  const totalPaginas = Math.max(1, Math.ceil(rankingFiltrado.length / PAGE_SIZE));
+  const pageActual = Math.min(page, totalPaginas - 1);
+  const rankingPagina = rankingFiltrado.slice(
+    pageActual * PAGE_SIZE,
+    pageActual * PAGE_SIZE + PAGE_SIZE,
+  );
+
+  const toggleSortRank = (key: RankKey) =>
+    setSortRank((s) =>
+      s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" },
+    );
+
+  const exportarRankingExcel = () => {
+    downloadExcel(
+      `Maycenter-Ultima-Asistencia-${sucursalNombre || "sede"}.xlsx`,
+      "Última asistencia",
+      rankingFiltrado.map((r) => ({
+        Paciente: r.nombre,
+        DNI: r.dni,
+        "Última asistencia": format(parseISO(r.ultimaAsistencia), "dd/MM/yyyy"),
+        "Hace (días)": r.diasDesde,
+        Visitas: r.visitas,
+      })),
+    );
+  };
 
   // Refs a los contenedores de cada chart, para serializar su SVG al exportar el PDF.
   const chartRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -403,55 +469,120 @@ export function MetricasPanel() {
 
           {/* Ranking de última asistencia */}
           <Card className="mt-6">
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <CardTitle className="text-base">Última asistencia por paciente</CardTitle>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Última vez que el paciente vino a la clínica (aunque se haya retirado sin
-                  atenderse). Fuente: llegadas del tótem + turnos manuales.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="Buscar por nombre o DNI"
-                    className="pl-8 h-9 w-56"
-                  />
+            <CardHeader className="gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">Última asistencia por paciente</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Última vez que el paciente vino a la clínica (aunque se haya retirado sin
+                    atenderse). Fuente: llegadas del tótem + turnos manuales.
+                  </p>
                 </div>
-                <Select value={ordenRanking} onValueChange={(v) => setOrdenRanking(v as any)}>
-                  <SelectTrigger className="h-9 w-44">
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      placeholder="Buscar por nombre o DNI"
+                      className="pl-8 h-9 w-56"
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9"
+                    onClick={exportarRankingExcel}
+                    disabled={rankingFiltrado.length === 0}
+                  >
+                    <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel
+                  </Button>
+                </div>
+              </div>
+
+              {/* Filtros rápidos */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Sin venir hace</span>
+                {(
+                  [
+                    ["todos", "Cualquiera"],
+                    ["30", "+30 días"],
+                    ["60", "+60 días"],
+                    ["90", "+90 días"],
+                  ] as [typeof inactividad, string][]
+                ).map(([key, lbl]) => (
+                  <button
+                    key={key}
+                    onClick={() => setInactividad(key)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      inactividad === key
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-foreground border-border hover:bg-accent"
+                    }`}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+                <span className="text-xs font-medium text-muted-foreground ml-2">Visitas</span>
+                <Select value={visitasFiltro} onValueChange={(v) => setVisitasFiltro(v as any)}>
+                  <SelectTrigger className="h-8 w-36">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="antiguo">Hace más tiempo</SelectItem>
-                    <SelectItem value="reciente">Más recientes</SelectItem>
-                    <SelectItem value="visitas">Más visitas</SelectItem>
+                    <SelectItem value="todos">Todas</SelectItem>
+                    <SelectItem value="1">Una sola (no volvió)</SelectItem>
+                    <SelectItem value="2">2 o más</SelectItem>
+                    <SelectItem value="5">5 o más</SelectItem>
                   </SelectContent>
                 </Select>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {rankingFiltrado.length} paciente{rankingFiltrado.length === 1 ? "" : "s"}
+                </span>
               </div>
             </CardHeader>
             <CardContent>
               {ranking.isLoading ? (
                 <div className="text-center text-muted-foreground py-10">Cargando…</div>
               ) : rankingFiltrado.length === 0 ? (
-                <div className="text-center text-muted-foreground py-10">Sin registros.</div>
+                <div className="text-center text-muted-foreground py-10">
+                  Sin pacientes para estos filtros.
+                </div>
               ) : (
                 <div className="overflow-hidden rounded-lg border border-border">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50 text-muted-foreground">
                       <tr>
-                        <th className="text-left font-medium px-3 py-2">Paciente</th>
-                        <th className="text-left font-medium px-3 py-2">DNI</th>
-                        <th className="text-left font-medium px-3 py-2">Última asistencia</th>
-                        <th className="text-right font-medium px-3 py-2">Hace (días)</th>
-                        <th className="text-right font-medium px-3 py-2">Visitas</th>
+                        <ThSort
+                          label="Paciente"
+                          col="nombre"
+                          sort={sortRank}
+                          onSort={toggleSortRank}
+                        />
+                        <ThSort label="DNI" col="dni" sort={sortRank} onSort={toggleSortRank} />
+                        <ThSort
+                          label="Última asistencia"
+                          col="ultima"
+                          sort={sortRank}
+                          onSort={toggleSortRank}
+                        />
+                        <ThSort
+                          label="Hace (días)"
+                          col="dias"
+                          sort={sortRank}
+                          onSort={toggleSortRank}
+                          align="right"
+                        />
+                        <ThSort
+                          label="Visitas"
+                          col="visitas"
+                          sort={sortRank}
+                          onSort={toggleSortRank}
+                          align="right"
+                        />
                       </tr>
                     </thead>
                     <tbody>
-                      {rankingFiltrado.slice(0, 200).map((r) => (
+                      {rankingPagina.map((r) => (
                         <tr key={r.dni} className="border-t border-border">
                           <td className="px-3 py-2">{r.nombre}</td>
                           <td className="px-3 py-2 tabular-nums">{r.dni}</td>
@@ -464,11 +595,37 @@ export function MetricasPanel() {
                       ))}
                     </tbody>
                   </table>
-                  {rankingFiltrado.length > 200 && (
-                    <div className="px-3 py-2 text-xs text-muted-foreground bg-muted/30">
-                      Mostrando 200 de {rankingFiltrado.length}. Afiná con el buscador.
+                  {/* Paginación */}
+                  <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-foreground bg-muted/30">
+                    <span>
+                      {pageActual * PAGE_SIZE + 1}–
+                      {Math.min((pageActual + 1) * PAGE_SIZE, rankingFiltrado.length)} de{" "}
+                      {rankingFiltrado.length}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => setPage((p) => Math.max(0, p - 1))}
+                        disabled={pageActual === 0}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <span>
+                        {pageActual + 1} / {totalPaginas}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => setPage((p) => Math.min(totalPaginas - 1, p + 1))}
+                        disabled={pageActual >= totalPaginas - 1}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -476,6 +633,36 @@ export function MetricasPanel() {
         </>
       ) : null}
     </div>
+  );
+}
+
+function ThSort({
+  label,
+  col,
+  sort,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  col: RankKey;
+  sort: { key: RankKey; dir: "asc" | "desc" };
+  onSort: (k: RankKey) => void;
+  align?: "left" | "right";
+}) {
+  const active = sort.key === col;
+  const Icon = !active ? ArrowUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <th className={`font-medium px-3 py-2 ${align === "right" ? "text-right" : "text-left"}`}>
+      <button
+        onClick={() => onSort(col)}
+        className={`inline-flex items-center gap-1 hover:text-foreground ${
+          align === "right" ? "flex-row-reverse" : ""
+        } ${active ? "text-foreground" : ""}`}
+      >
+        {label}
+        <Icon className="h-3.5 w-3.5" />
+      </button>
+    </th>
   );
 }
 
