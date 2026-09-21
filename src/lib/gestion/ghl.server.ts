@@ -16,23 +16,28 @@ import { logAudit } from "@/lib/gestion/audit";
 import { isValidDni, normalizeDni } from "@/lib/dni";
 
 // -------------------------------------------------------------------------
-// Config GHL por sucursal (slug). Cada sede es una subcuenta GHL separada, así
-// que el slug resuelve a un location/PIT propio + el custom field DNI de esa
-// subcuenta. Credenciales por env (no en DB).
+// Config GHL por sucursal (slug). Una sucursal puede leer de VARIAS subcuentas
+// GHL (sources): p. ej. CABA lee de la subcuenta general + la de IOMA CABA, y
+// sus turnos se fusionan en la misma pantalla de Recepción. Cada source tiene su
+// location/PIT y sus propios custom fields (pueden diferir entre subcuentas).
+// Credenciales por env (no en DB).
 // -------------------------------------------------------------------------
-type GhlConfig = {
+type GhlSource = {
   locationId: string;
   pit: string;
-  dniField: string;
-  osField: string;
+  // Custom field DNI. null = la subcuenta no lo tiene (no se lee ni escribe).
+  dniField: string | null;
+  osField: string | null;
   // Custom field "Observaciones" del contacto (para la columna de la tabla de turnos).
-  obsField: string;
+  obsField: string | null;
   // Custom field "Ficha" del contacto (Tiene ficha / No tiene ficha).
-  fichaField: string;
+  fichaField: string | null;
   // Custom field "Estado de la cita" del contacto (Asistido / No Asistido). Lo lee el
   // workflow de recupero de inasistidos, que no puede evaluar el appointmentStatus nativo.
-  // Solo existe en CABA; en el resto de sucursales es null y no se escribe.
   estadoCitaField: string | null;
+  // Etiqueta de origen para el badge de la tabla (p. ej. "IOMA"). null = sin badge
+  // (sede de una sola subcuenta).
+  badge: string | null;
   // Filtros de calendarios (por id). Se aplican sobre la location, DESPUÉS del cache.
   onlyCalendarIds?: string[];
   excludeCalendarIds?: string[];
@@ -44,68 +49,98 @@ type GhlConfig = {
 // calendario, y calle10 lo excluye.
 const EDIFICIO_B_DIAG77 = "4g2Z2btBt4XHjXCUzHP8";
 
-const GHL_BY_SLUG: Record<
-  string,
-  {
-    locEnv: string;
-    pitEnv: string;
-    dniField: string;
-    osField: string;
-    obsField: string;
-    fichaField: string;
-    estadoCitaField?: string;
-    onlyCalendarIds?: string[];
-    excludeCalendarIds?: string[];
-  }
-> = {
-  caba: {
-    locEnv: "GHL_CABA_LOCATION_ID",
-    pitEnv: "GHL_CABA_PIT",
-    dniField: "rjdIgjhi3iPZFpRVDP7h",
-    osField: "J1dLEUewkTaqVthYDOak",
-    obsField: "RNgqB0yQSDM1LxeS7IRc",
-    fichaField: "SP1rAdxTjKwrVa9Tougf",
-    estadoCitaField: "qGZJCp60BtzNyipXIjvD",
-  },
-  calle10: {
-    locEnv: "GHL_LAPLATA_LOCATION_ID",
-    pitEnv: "GHL_LAPLATA_PIT",
-    dniField: "KoiPTwrSvVz8ud5LKzBN",
-    osField: "VoybEaSZn3agkMBk1MRU",
-    obsField: "iPovCNTHMScBeLHsFAEc",
-    fichaField: "jiuTQYHKyxQCheXjdq2t",
-    excludeCalendarIds: [EDIFICIO_B_DIAG77],
-  },
-  diag77: {
-    locEnv: "GHL_LAPLATA_LOCATION_ID",
-    pitEnv: "GHL_LAPLATA_PIT",
-    dniField: "KoiPTwrSvVz8ud5LKzBN",
-    osField: "VoybEaSZn3agkMBk1MRU",
-    obsField: "iPovCNTHMScBeLHsFAEc",
-    fichaField: "jiuTQYHKyxQCheXjdq2t",
-    onlyCalendarIds: [EDIFICIO_B_DIAG77],
-  },
+type SourceDef = {
+  locEnv: string;
+  pitEnv: string;
+  dniField: string | null;
+  osField: string | null;
+  obsField: string | null;
+  fichaField: string | null;
+  estadoCitaField?: string;
+  badge?: string;
+  onlyCalendarIds?: string[];
+  excludeCalendarIds?: string[];
 };
 
-export function ghlConfigForSlug(slug: string | null): GhlConfig | null {
-  if (!slug) return null;
-  const entry = GHL_BY_SLUG[slug];
-  if (!entry) return null;
-  const locationId = process.env[entry.locEnv];
-  const pit = process.env[entry.pitEnv];
-  if (locationId && pit)
-    return {
+// Cada sucursal resuelve a una o más subcuentas GHL (sources).
+const GHL_BY_SLUG: Record<string, SourceDef[]> = {
+  caba: [
+    {
+      locEnv: "GHL_CABA_LOCATION_ID",
+      pitEnv: "GHL_CABA_PIT",
+      dniField: "rjdIgjhi3iPZFpRVDP7h",
+      osField: "J1dLEUewkTaqVthYDOak",
+      obsField: "RNgqB0yQSDM1LxeS7IRc",
+      fichaField: "SP1rAdxTjKwrVa9Tougf",
+      estadoCitaField: "qGZJCp60BtzNyipXIjvD",
+    },
+    {
+      // IOMA CABA: subcuenta separada, misma recepción física. Solo tiene Obra Social y
+      // "Asistio al turno" (estado de cita); no tiene DNI, Observaciones ni Ficha.
+      locEnv: "GHL_IOMA_LOCATION_ID",
+      pitEnv: "GHL_IOMA_PIT",
+      dniField: null,
+      osField: "DOmSLDrchwLP8zA0OMKr",
+      obsField: null,
+      fichaField: null,
+      estadoCitaField: "OjqTwu3PvlbJq4AB8TOm",
+      badge: "IOMA",
+    },
+  ],
+  calle10: [
+    {
+      locEnv: "GHL_LAPLATA_LOCATION_ID",
+      pitEnv: "GHL_LAPLATA_PIT",
+      dniField: "KoiPTwrSvVz8ud5LKzBN",
+      osField: "VoybEaSZn3agkMBk1MRU",
+      obsField: "iPovCNTHMScBeLHsFAEc",
+      fichaField: "jiuTQYHKyxQCheXjdq2t",
+      excludeCalendarIds: [EDIFICIO_B_DIAG77],
+    },
+  ],
+  diag77: [
+    {
+      locEnv: "GHL_LAPLATA_LOCATION_ID",
+      pitEnv: "GHL_LAPLATA_PIT",
+      dniField: "KoiPTwrSvVz8ud5LKzBN",
+      osField: "VoybEaSZn3agkMBk1MRU",
+      obsField: "iPovCNTHMScBeLHsFAEc",
+      fichaField: "jiuTQYHKyxQCheXjdq2t",
+      onlyCalendarIds: [EDIFICIO_B_DIAG77],
+    },
+  ],
+};
+
+// Todas las subcuentas GHL activas de una sucursal (las que tienen env cargado).
+export function ghlSourcesForSlug(slug: string | null): GhlSource[] {
+  if (!slug) return [];
+  const defs = GHL_BY_SLUG[slug];
+  if (!defs) return [];
+  const out: GhlSource[] = [];
+  for (const d of defs) {
+    const locationId = process.env[d.locEnv];
+    const pit = process.env[d.pitEnv];
+    if (!locationId || !pit) continue;
+    out.push({
       locationId,
       pit,
-      dniField: entry.dniField,
-      osField: entry.osField,
-      obsField: entry.obsField,
-      fichaField: entry.fichaField,
-      estadoCitaField: entry.estadoCitaField ?? null,
-      onlyCalendarIds: entry.onlyCalendarIds,
-      excludeCalendarIds: entry.excludeCalendarIds,
-    };
-  return null;
+      dniField: d.dniField,
+      osField: d.osField,
+      obsField: d.obsField,
+      fichaField: d.fichaField,
+      estadoCitaField: d.estadoCitaField ?? null,
+      badge: d.badge ?? null,
+      onlyCalendarIds: d.onlyCalendarIds,
+      excludeCalendarIds: d.excludeCalendarIds,
+    });
+  }
+  return out;
+}
+
+// La subcuenta concreta a la que pertenece un turno (para las mutaciones, que tocan
+// una location específica). Valida que la location pertenezca a la sucursal.
+function sourceForLocation(slug: string | null, locationId: string): GhlSource | null {
+  return ghlSourcesForSlug(slug).find((s) => s.locationId === locationId) ?? null;
 }
 
 // Ejecuta `fn` sobre `items` con un límite de concurrencia (evita disparar N
@@ -134,7 +169,7 @@ async function ghlFetch(pit: string, path: string, version = "2021-04-15"): Prom
 }
 
 // Actualiza el estado de una cita en GHL (showed = asistió, noshow = ausente).
-async function updateAppointmentStatus(cfg: GhlConfig, eventId: string, status: string) {
+async function updateAppointmentStatus(cfg: GhlSource, eventId: string, status: string) {
   const res = await fetch(`${GHL_BASE}/calendars/events/appointments/${eventId}`, {
     method: "PUT",
     headers: {
@@ -149,7 +184,7 @@ async function updateAppointmentStatus(cfg: GhlConfig, eventId: string, status: 
 }
 
 // Actualiza un custom field de un contacto en GHL.
-async function updateContactField(cfg: GhlConfig, contactId: string, fieldId: string, value: string) {
+async function updateContactField(cfg: GhlSource, contactId: string, fieldId: string, value: string) {
   const res = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
     method: "PUT",
     headers: {
@@ -164,7 +199,7 @@ async function updateContactField(cfg: GhlConfig, contactId: string, fieldId: st
 }
 
 // Actualiza el contacto en GHL con un body arbitrario (datos base + custom fields).
-async function updateContactFull(cfg: GhlConfig, contactId: string, body: Record<string, unknown>) {
+async function updateContactFull(cfg: GhlSource, contactId: string, body: Record<string, unknown>) {
   const res = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
     method: "PUT",
     headers: {
@@ -180,7 +215,7 @@ async function updateContactFull(cfg: GhlConfig, contactId: string, body: Record
 
 // Actualiza una cita en GHL (reprogramación + estado). El body puede incluir calendarId,
 // startTime, endTime, appointmentStatus.
-async function updateAppointmentFull(cfg: GhlConfig, eventId: string, body: Record<string, unknown>) {
+async function updateAppointmentFull(cfg: GhlSource, eventId: string, body: Record<string, unknown>) {
   const res = await fetch(`${GHL_BASE}/calendars/events/appointments/${eventId}`, {
     method: "PUT",
     headers: {
@@ -195,7 +230,7 @@ async function updateAppointmentFull(cfg: GhlConfig, eventId: string, body: Reco
 }
 
 // Agrega una nota al contacto en GHL (se usa para dejar registro del motivo de cancelación).
-async function addContactNote(cfg: GhlConfig, contactId: string, body: string) {
+async function addContactNote(cfg: GhlSource, contactId: string, body: string) {
   const res = await fetch(`${GHL_BASE}/contacts/${contactId}/notes`, {
     method: "POST",
     headers: {
@@ -240,7 +275,7 @@ function origenLabel(source: string | null | undefined): string {
 
 // Calendarios de la location, cacheados en memoria ~5 min (id → nombre).
 const calCache = new Map<string, { at: number; cals: { id: string; name: string }[] }>();
-async function listCalendars(cfg: GhlConfig): Promise<{ id: string; name: string }[]> {
+async function listCalendars(cfg: GhlSource): Promise<{ id: string; name: string }[]> {
   // El cache es por location y guarda la lista SIN filtrar (calle10 y diag77 comparten
   // location pero filtran distinto). El filtro por sucursal se aplica después.
   let all: { id: string; name: string }[];
@@ -262,7 +297,7 @@ async function listCalendars(cfg: GhlConfig): Promise<{ id: string; name: string
 
 // Eventos de todos los calendarios de la location entre dos instantes (epoch ms).
 // Base de `listDayEvents` (un día) y de las métricas por rango (un mes).
-export async function listRangeEvents(cfg: GhlConfig, startMs: number, endMs: number) {
+export async function listRangeEvents(cfg: GhlSource, startMs: number, endMs: number) {
   const cals = await listCalendars(cfg);
   const calName = new Map(cals.map((c) => [c.id, c.name]));
   const perCal = await mapLimit(cals, 6, async (c) => {
@@ -290,14 +325,14 @@ export async function listRangeEvents(cfg: GhlConfig, startMs: number, endMs: nu
     }));
 }
 
-async function listDayEvents(cfg: GhlConfig, fecha: string) {
+async function listDayEvents(cfg: GhlSource, fecha: string) {
   const start = new Date(`${fecha}T00:00:00-03:00`).getTime();
   const end = new Date(`${fecha}T23:59:59-03:00`).getTime();
   return listRangeEvents(cfg, start, end);
 }
 
 // Nombre + teléfono + DNI de los contactos (dedup + paralelo).
-export async function resolveContactos(cfg: GhlConfig, ids: string[]) {
+export async function resolveContactos(cfg: GhlSource, ids: string[]) {
   const unique = [...new Set(ids)];
   const entries = await Promise.all(
     unique.map(async (id) => {
@@ -346,7 +381,7 @@ export async function resolveContactos(cfg: GhlConfig, ids: string[]) {
 
 // Nombre de los usuarios que agendaron (dedup + cache).
 const userCache = new Map<string, string>();
-async function resolveUsuarios(cfg: GhlConfig, ids: (string | null)[]) {
+async function resolveUsuarios(cfg: GhlSource, ids: (string | null)[]) {
   const unique = [...new Set(ids.filter((x): x is string => !!x))];
   await Promise.all(
     unique
@@ -475,28 +510,47 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
       .from(sucursales)
       .where(eq(sucursales.id, data.sucursalId))
       .limit(1);
-    const cfg = ghlConfigForSlug(suc?.slug ?? null);
-    if (!cfg) {
+    const sources = ghlSourcesForSlug(suc?.slug ?? null);
+    if (sources.length === 0) {
       return {
         soportado: false as const,
         turnos: [...manuales].sort((a, b) => a.startTime.localeCompare(b.startTime)),
       };
     }
 
-    const eventos = await listDayEvents(cfg, data.fecha);
-    const [contactos, usuarios] = await Promise.all([
-      resolveContactos(
-        cfg,
-        eventos.map((e) => e.contactId),
-      ),
-      resolveUsuarios(
-        cfg,
-        eventos.map((e) => e.creadoPorUserId),
-      ),
-    ]);
+    // Eventos de TODAS las subcuentas de la sucursal (CABA fusiona general + IOMA).
+    // Cada source se resuelve con su propio PIT y sus custom fields; el turno queda
+    // marcado con la locationId de origen (para las mutaciones) y su badge.
+    const crudos: {
+      source: GhlSource;
+      e: Awaited<ReturnType<typeof listDayEvents>>[number];
+      c: Awaited<ReturnType<typeof resolveContactos>> extends Map<string, infer V> ? V | undefined : never;
+      agendadoPor: string;
+    }[] = [];
+    for (const source of sources) {
+      const eventos = await listDayEvents(source, data.fecha);
+      const [contactos, usuarios] = await Promise.all([
+        resolveContactos(
+          source,
+          eventos.map((e) => e.contactId),
+        ),
+        resolveUsuarios(
+          source,
+          eventos.map((e) => e.creadoPorUserId),
+        ),
+      ]);
+      for (const e of eventos) {
+        crudos.push({
+          source,
+          e,
+          c: contactos.get(e.contactId),
+          agendadoPor: e.creadoPorUserId ? (usuarios.get(e.creadoPorUserId) ?? "—") : "—",
+        });
+      }
+    }
 
     // Estados de flujo ya marcados localmente.
-    const ids = eventos.map((e) => e.eventId);
+    const ids = crudos.map((r) => r.e.eventId);
     const marcadas = ids.length
       ? await db
           .select({
@@ -544,9 +598,7 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
       );
     const llegadaPorDni = new Map(llegadas.map((l) => [onlyDigits(l.dni), l]));
 
-    const turnosGhl = eventos
-      .map((e) => {
-        const c = contactos.get(e.contactId);
+    const turnosGhl = crudos.map(({ source, e, c, agendadoPor }) => {
         const dni = c?.dni ? String(c.dni) : null;
         const hora = hhmmAR(new Date(e.startTime));
         const llegada = dni ? (llegadaPorDni.get(onlyDigits(dni)) ?? null) : null;
@@ -569,6 +621,10 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
           eventId: e.eventId as string | null,
           contactId: e.contactId as string | null,
           calendarId: e.calendarId as string | null,
+          // Subcuenta de origen del turno: la usan las mutaciones para tocar la location
+          // correcta; el badge distingue el origen en la tabla.
+          locationId: source.locationId,
+          origenSub: source.badge,
           hora,
           startTime: e.startTime,
           endTime: e.endTime,
@@ -586,7 +642,7 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
           profesional: e.profesional,
           motivo: e.title,
           estadoGhl: e.estadoGhl,
-          agendadoPor: e.creadoPorUserId ? (usuarios.get(e.creadoPorUserId) ?? "—") : "—",
+          agendadoPor,
           origen: e.origen,
           ingresoTotem,
           llegadaEstado: llegada?.estado ?? null,
@@ -598,7 +654,7 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
           odontologoACargoId: aCargoId,
           odontologoACargo: aCargoId ? (odontNombre.get(aCargoId) ?? null) : null,
           pisoId: pisoMap.get(e.eventId) ?? null,
-          contactoUrl: `https://app.gohighlevel.com/v2/location/${cfg.locationId}/contacts/detail/${e.contactId}`,
+          contactoUrl: `https://app.gohighlevel.com/v2/location/${source.locationId}/contacts/detail/${e.contactId}`,
           estado,
         };
       });
@@ -638,11 +694,14 @@ export const getResumenRecepcion = createServerFn({ method: "GET" })
       .from(sucursales)
       .where(eq(sucursales.id, data.sucursalId))
       .limit(1);
-    const cfg = ghlConfigForSlug(suc?.slug ?? null);
+    const sources = ghlSourcesForSlug(suc?.slug ?? null);
     let turnos: number | null = null;
-    if (cfg) {
+    if (sources.length > 0) {
       try {
-        turnos = (await listDayEvents(cfg, data.fecha)).length;
+        const counts = await Promise.all(
+          sources.map(async (source) => (await listDayEvents(source, data.fecha)).length),
+        );
+        turnos = counts.reduce((a, b) => a + b, 0);
       } catch {
         turnos = null;
       }
@@ -674,6 +733,7 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
         eventId: z.string().min(1),
         contactId: z.string().min(1),
         sucursalId: z.string().uuid(),
+        locationId: z.string().min(1),
         fecha: z.string(),
         estado: z.enum(ESTADO_TURNO),
       })
@@ -693,7 +753,7 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
       .from(sucursales)
       .where(eq(sucursales.id, data.sucursalId))
       .limit(1);
-    const cfg = ghlConfigForSlug(suc?.slug ?? null);
+    const cfg = sourceForLocation(suc?.slug ?? null, data.locationId);
     if (cfg) {
       await updateAppointmentStatus(cfg, data.eventId, ghlStatus);
       // El workflow de recupero de inasistidos evalúa el custom field "Estado de la cita"
@@ -758,6 +818,7 @@ export const cancelarTurnoGhl = createServerFn({ method: "POST" })
         eventId: z.string().min(1),
         contactId: z.string().min(1),
         sucursalId: z.string().uuid(),
+        locationId: z.string().min(1),
         fecha: z.string(),
         motivo: z.string().optional(),
       })
@@ -774,7 +835,7 @@ export const cancelarTurnoGhl = createServerFn({ method: "POST" })
       .from(sucursales)
       .where(eq(sucursales.id, data.sucursalId))
       .limit(1);
-    const cfg = ghlConfigForSlug(suc?.slug ?? null);
+    const cfg = sourceForLocation(suc?.slug ?? null, data.locationId);
     if (cfg) {
       await updateAppointmentStatus(cfg, data.eventId, "cancelled");
       if (motivo) await addContactNote(cfg, data.contactId, `Turno cancelado desde recepción: ${motivo}`);
@@ -961,6 +1022,7 @@ export const actualizarTurnoGhl = createServerFn({ method: "POST" })
         eventId: z.string().min(1),
         contactId: z.string().min(1),
         sucursalId: z.string().uuid(),
+        locationId: z.string().min(1),
         fecha: z.string(),
         calendarId: z.string().nullable().optional(),
         firstName: z.string().optional(),
@@ -993,16 +1055,20 @@ export const actualizarTurnoGhl = createServerFn({ method: "POST" })
       .from(sucursales)
       .where(eq(sucursales.id, data.sucursalId))
       .limit(1);
-    const cfg = ghlConfigForSlug(suc?.slug ?? null);
+    const cfg = sourceForLocation(suc?.slug ?? null, data.locationId);
     if (!cfg) throw new Error("Sucursal sin GHL configurado");
 
-    // 1) Contacto: datos base + custom fields.
+    // 1) Contacto: datos base + custom fields. Solo se escriben los custom fields que la
+    // subcuenta tenga (IOMA, p. ej., no tiene DNI/Observaciones/Ficha).
     const customFields: { id: string; value: string }[] = [];
-    if (data.dni !== undefined) customFields.push({ id: cfg.dniField, value: data.dni });
-    if (data.obraSocial !== undefined) customFields.push({ id: cfg.osField, value: data.obraSocial });
-    if (data.observaciones !== undefined)
+    if (data.dni !== undefined && cfg.dniField)
+      customFields.push({ id: cfg.dniField, value: data.dni });
+    if (data.obraSocial !== undefined && cfg.osField)
+      customFields.push({ id: cfg.osField, value: data.obraSocial });
+    if (data.observaciones !== undefined && cfg.obsField)
       customFields.push({ id: cfg.obsField, value: data.observaciones });
-    if (data.ficha !== undefined) customFields.push({ id: cfg.fichaField, value: data.ficha });
+    if (data.ficha !== undefined && cfg.fichaField)
+      customFields.push({ id: cfg.fichaField, value: data.ficha });
     const contactBody: Record<string, unknown> = {};
     if (data.firstName !== undefined) contactBody.firstName = data.firstName;
     if (data.lastName !== undefined) contactBody.lastName = data.lastName;
@@ -1088,6 +1154,7 @@ export const actualizarFichaContacto = createServerFn({ method: "POST" })
     z
       .object({
         sucursalId: z.string().uuid(),
+        locationId: z.string().min(1),
         contactId: z.string().min(1),
         valor: z.enum(FICHA_VALORES),
       })
@@ -1103,8 +1170,10 @@ export const actualizarFichaContacto = createServerFn({ method: "POST" })
       .from(sucursales)
       .where(eq(sucursales.id, data.sucursalId))
       .limit(1);
-    const cfg = ghlConfigForSlug(suc?.slug ?? null);
+    const cfg = sourceForLocation(suc?.slug ?? null, data.locationId);
     if (!cfg) throw new Error("Esta sucursal no tiene GHL configurado");
+    if (!cfg.fichaField)
+      throw new Error("Esta subcuenta no tiene el campo Ficha (p. ej. IOMA)");
     await updateContactField(cfg, data.contactId, cfg.fichaField, data.valor);
     await logAudit(ctx, {
       action: "update",

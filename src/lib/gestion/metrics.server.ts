@@ -13,7 +13,7 @@ import {
 } from "@/db/schema";
 import { requireAuth } from "@/lib/gestion/session.server";
 import {
-  ghlConfigForSlug,
+  ghlSourcesForSlug,
   listRangeEvents,
   resolveContactos,
   estadoDesdeGhl,
@@ -148,7 +148,7 @@ export const getMetricasRecepcion = createServerFn({ method: "GET" })
       .from(sucursales)
       .where(eq(sucursales.id, data.sucursalId))
       .limit(1);
-    const cfg = ghlConfigForSlug(suc?.slug ?? null);
+    const sources = ghlSourcesForSlug(suc?.slug ?? null);
 
     type Cita = {
       fecha: string;
@@ -166,15 +166,26 @@ export const getMetricasRecepcion = createServerFn({ method: "GET" })
     }));
 
     let soportadoGhl = false;
-    if (cfg) {
+    if (sources.length > 0) {
       soportadoGhl = true;
-      const eventos = await listRangeEvents(cfg, desde.getTime(), hasta.getTime());
-      const contactos = await resolveContactos(
-        cfg,
-        eventos.map((e) => e.contactId),
-      );
+      // Eventos de todas las subcuentas de la sucursal (CABA fusiona general + IOMA),
+      // cada una resuelta con su propio PIT y sus custom fields.
+      const eventosSrc: {
+        e: Awaited<ReturnType<typeof listRangeEvents>>[number];
+        c: Awaited<ReturnType<typeof resolveContactos>> extends Map<string, infer V>
+          ? V | undefined
+          : never;
+      }[] = [];
+      for (const source of sources) {
+        const eventos = await listRangeEvents(source, desde.getTime(), hasta.getTime());
+        const contactos = await resolveContactos(
+          source,
+          eventos.map((e) => e.contactId),
+        );
+        for (const e of eventos) eventosSrc.push({ e, c: contactos.get(e.contactId) });
+      }
       // Marcas locales de estado para esos eventos.
-      const ids = eventos.map((e) => e.eventId);
+      const ids = eventosSrc.map((x) => x.e.eventId);
       const marcadas = ids.length
         ? await db
             .select({ eventId: turnoAsistencias.ghlEventId, estado: turnoAsistencias.estado })
@@ -183,8 +194,7 @@ export const getMetricasRecepcion = createServerFn({ method: "GET" })
         : [];
       const estadoLocal = new Map(marcadas.map((m) => [m.eventId, m.estado]));
 
-      for (const e of eventos) {
-        const c = contactos.get(e.contactId);
+      for (const { e, c } of eventosSrc) {
         const dni = c?.dni ? onlyDigits(String(c.dni)) : null;
         const fecha = fechaAR(new Date(e.startTime));
         const ingresoTotem = dni ? llegadaDniDia.has(`${dni}:${fecha}`) : false;

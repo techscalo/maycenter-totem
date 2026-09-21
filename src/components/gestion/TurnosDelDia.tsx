@@ -231,6 +231,7 @@ export function TurnosDelDia() {
               eventId: v.row.eventId,
               contactId: v.row.contactId,
               sucursalId,
+              locationId: v.row.locationId,
               fecha,
               estado: v.estado,
             } as any,
@@ -266,6 +267,7 @@ export function TurnosDelDia() {
               eventId: v.row.eventId,
               contactId: v.row.contactId,
               sucursalId,
+              locationId: v.row.locationId,
               fecha,
               motivo: v.motivo || undefined,
             } as any,
@@ -293,7 +295,12 @@ export function TurnosDelDia() {
       v.row.tipo === "manual"
         ? actualizarFichaManual({ data: { id: v.row.id, valor: v.valor } as any })
         : actualizarFichaContacto({
-            data: { sucursalId, contactId: v.row.contactId, valor: v.valor } as any,
+            data: {
+              sucursalId,
+              locationId: v.row.locationId,
+              contactId: v.row.contactId,
+              valor: v.valor,
+            } as any,
           }),
     onMutate: async (v) => {
       await qc.cancelQueries({ queryKey });
@@ -780,7 +787,20 @@ export function TurnosDelDia() {
                           </TableCell>
                         )}
                         {show("paciente") && (
-                          <TableCell className="font-medium">{t.paciente}</TableCell>
+                          <TableCell className="font-medium">
+                            <span className="inline-flex items-center gap-1.5">
+                              {t.paciente}
+                              {t.origenSub && (
+                                <Badge
+                                  variant="outline"
+                                  className="border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400"
+                                  title={`Turno de la subcuenta ${t.origenSub}`}
+                                >
+                                  {t.origenSub}
+                                </Badge>
+                              )}
+                            </span>
+                          </TableCell>
                         )}
                         {show("obraSocial") && (
                           <TableCell className="text-sm">{t.obraSocial ?? "—"}</TableCell>
@@ -1382,6 +1402,7 @@ function EditarTurnoDialog({
         eventId: row.eventId,
         contactId: row.contactId,
         sucursalId,
+        locationId: row.locationId,
         fecha,
         calendarId: row.calendarId,
         firstName: form.firstName.trim(),
