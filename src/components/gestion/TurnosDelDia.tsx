@@ -194,11 +194,19 @@ export function TurnosDelDia() {
     });
   const show = (key: string) => cols[key] !== false;
 
+  // "Actualizar" saltea el cache SWR del servidor (vuelve a pegar a GHL). Los refetch
+  // normales (montaje, post-mutación) usan el cache: el estado marcado igual se refleja
+  // porque el merge con la DB local es siempre fresco.
+  const forceNextRef = useRef(false);
   const queryKey = ["turnos-dia", sucursalId, fecha];
   const { data, isLoading, isFetching, refetch } = useQuery({
     enabled: !!sucursalId,
     queryKey,
-    queryFn: () => getTurnosDelDia({ data: { sucursalId, fecha } }),
+    queryFn: () => {
+      const force = forceNextRef.current;
+      forceNextRef.current = false;
+      return getTurnosDelDia({ data: { sucursalId, fecha, force } });
+    },
     // La carga trae los turnos en vivo de GHL (lento). Se consideran frescos 60s para no
     // refetchear al volver a la pestaña o remontar; "Actualizar" fuerza el refetch igual.
     staleTime: 60_000,
@@ -206,6 +214,10 @@ export function TurnosDelDia() {
     // Al cambiar de fecha, mantener la tabla anterior visible en vez de parpadear a vacío.
     placeholderData: (prev) => prev,
   });
+  const actualizar = () => {
+    forceNextRef.current = true;
+    refetch();
+  };
 
   // Odontólogos de la sucursal, para el selector "Odontólogo a cargo".
   const { data: odontologos } = useQuery({
@@ -641,7 +653,7 @@ export function TurnosDelDia() {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
+          <Button variant="outline" onClick={actualizar} disabled={isFetching}>
             <RefreshCw className={`mr-2 h-4 w-4 ${isFetching ? "animate-spin" : ""}`} /> Actualizar
           </Button>
           <NuevoTurnoDialog

@@ -507,9 +507,68 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
   });
 }
 
+// Cache SWR de la parte cara de GHL (eventos + contactos + usuarios resueltos) por
+// sucursal+fecha. TTL corto: la 1ª carga pega a GHL (~5s), las siguientes salen del
+// cache (<0.5s) — también para otros recepcionistas. El estado local (marcas, llegadas
+// de Neon) NO se cachea: se mergea fresco en cada carga, así el feedback al marcar un
+// estado es inmediato. `force` (botón Actualizar) saltea el cache.
+type CrudoGhl = {
+  locationId: string;
+  badge: string | null;
+  e: Awaited<ReturnType<typeof listDayEvents>>[number];
+  c: Awaited<ReturnType<typeof resolveContactos>> extends Map<string, infer V> ? V | undefined : never;
+  agendadoPor: string;
+};
+const ghlDayCache = new Map<string, { at: number; crudos: CrudoGhl[] }>();
+const GHL_DAY_TTL = 60_000;
+
+async function crudosGhlDelDia(
+  sources: GhlSource[],
+  fecha: string,
+  cacheKey: string,
+  force: boolean,
+): Promise<CrudoGhl[]> {
+  const hit = ghlDayCache.get(cacheKey);
+  if (!force && hit && Date.now() - hit.at < GHL_DAY_TTL) return hit.crudos;
+  // Las subcuentas (CABA + IOMA) se consultan EN SERIE a propósito: en paralelo se
+  // duplica la concurrencia contra GHL y salta el rate-limit (429).
+  const crudos: CrudoGhl[] = [];
+  for (const source of sources) {
+    const eventos = await listDayEvents(source, fecha);
+    const [contactos, usuarios] = await Promise.all([
+      resolveContactos(
+        source,
+        eventos.map((e) => e.contactId),
+      ),
+      resolveUsuarios(
+        source,
+        eventos.map((e) => e.creadoPorUserId),
+      ),
+    ]);
+    for (const e of eventos) {
+      crudos.push({
+        locationId: source.locationId,
+        badge: source.badge,
+        e,
+        c: contactos.get(e.contactId),
+        agendadoPor: e.creadoPorUserId ? (usuarios.get(e.creadoPorUserId) ?? "—") : "—",
+      });
+    }
+  }
+  ghlDayCache.set(cacheKey, { at: Date.now(), crudos });
+  return crudos;
+}
+
 export const getTurnosDelDia = createServerFn({ method: "GET" })
   .inputValidator((i: unknown) =>
-    z.object({ sucursalId: z.string().uuid(), fecha: z.string() }).parse(i),
+    z
+      .object({
+        sucursalId: z.string().uuid(),
+        fecha: z.string(),
+        // Botón "Actualizar": saltea el cache SWR y vuelve a pegar a GHL.
+        force: z.boolean().optional(),
+      })
+      .parse(i),
   )
   .handler(async ({ data }) => {
     const ctx = await requireAuth();
@@ -532,39 +591,14 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
       };
     }
 
-    // Eventos de TODAS las subcuentas de la sucursal (CABA fusiona general + IOMA).
-    // Cada source se resuelve con su propio PIT y sus custom fields; el turno queda
-    // marcado con la locationId de origen (para las mutaciones) y su badge. Las
-    // subcuentas se consultan EN SERIE a propósito: en paralelo se duplica la
-    // concurrencia contra GHL y salta el rate-limit (429), que sale más caro.
-    type Crudo = {
-      source: GhlSource;
-      e: Awaited<ReturnType<typeof listDayEvents>>[number];
-      c: Awaited<ReturnType<typeof resolveContactos>> extends Map<string, infer V> ? V | undefined : never;
-      agendadoPor: string;
-    };
-    const crudos: Crudo[] = [];
-    for (const source of sources) {
-      const eventos = await listDayEvents(source, data.fecha);
-      const [contactos, usuarios] = await Promise.all([
-        resolveContactos(
-          source,
-          eventos.map((e) => e.contactId),
-        ),
-        resolveUsuarios(
-          source,
-          eventos.map((e) => e.creadoPorUserId),
-        ),
-      ]);
-      for (const e of eventos) {
-        crudos.push({
-          source,
-          e,
-          c: contactos.get(e.contactId),
-          agendadoPor: e.creadoPorUserId ? (usuarios.get(e.creadoPorUserId) ?? "—") : "—",
-        });
-      }
-    }
+    // Parte cara de GHL (eventos + contactos de CABA e IOMA), cacheada 60s por
+    // sucursal+fecha. El estado local se mergea fresco abajo.
+    const crudos = await crudosGhlDelDia(
+      sources,
+      data.fecha,
+      `${data.sucursalId}:${data.fecha}`,
+      data.force ?? false,
+    );
 
     // Estados de flujo ya marcados localmente.
     const ids = crudos.map((r) => r.e.eventId);
@@ -615,7 +649,7 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
       );
     const llegadaPorDni = new Map(llegadas.map((l) => [onlyDigits(l.dni), l]));
 
-    const turnosGhl = crudos.map(({ source, e, c, agendadoPor }) => {
+    const turnosGhl = crudos.map(({ locationId, badge, e, c, agendadoPor }) => {
         const dni = c?.dni ? String(c.dni) : null;
         const hora = hhmmAR(new Date(e.startTime));
         const llegada = dni ? (llegadaPorDni.get(onlyDigits(dni)) ?? null) : null;
@@ -642,8 +676,8 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
           calendarId: e.calendarId as string | null,
           // Subcuenta de origen del turno: la usan las mutaciones para tocar la location
           // correcta; el badge distingue el origen en la tabla.
-          locationId: source.locationId,
-          origenSub: source.badge,
+          locationId,
+          origenSub: badge,
           hora,
           startTime: e.startTime,
           endTime: e.endTime,
@@ -673,7 +707,7 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
           odontologoACargoId: aCargoId,
           odontologoACargo: aCargoId ? (odontNombre.get(aCargoId) ?? null) : null,
           pisoId: pisoMap.get(e.eventId) ?? null,
-          contactoUrl: `https://app.gohighlevel.com/v2/location/${source.locationId}/contacts/detail/${e.contactId}`,
+          contactoUrl: `https://app.gohighlevel.com/v2/location/${locationId}/contacts/detail/${e.contactId}`,
           estado,
         };
       });
