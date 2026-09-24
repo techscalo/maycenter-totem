@@ -199,6 +199,12 @@ export function TurnosDelDia() {
     enabled: !!sucursalId,
     queryKey,
     queryFn: () => getTurnosDelDia({ data: { sucursalId, fecha } }),
+    // La carga trae los turnos en vivo de GHL (lento). Se consideran frescos 60s para no
+    // refetchear al volver a la pestaña o remontar; "Actualizar" fuerza el refetch igual.
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    // Al cambiar de fecha, mantener la tabla anterior visible en vez de parpadear a vacío.
+    placeholderData: (prev) => prev,
   });
 
   // Odontólogos de la sucursal, para el selector "Odontólogo a cargo".

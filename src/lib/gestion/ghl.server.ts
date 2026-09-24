@@ -162,11 +162,21 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 const GHL_BASE = "https://services.leadconnectorhq.com";
 
 async function ghlFetch(pit: string, path: string, version = "2021-04-15"): Promise<any> {
-  const res = await fetch(`${GHL_BASE}${path}`, {
-    headers: { Authorization: `Bearer ${pit}`, Version: version, "User-Agent": "curl/8.4.0" },
-  });
-  if (!res.ok) throw new Error(`GHL ${res.status} en ${path}`);
-  return res.json();
+  // GHL rate-limitea (429) en ráfagas; reintentar con backoff evita que un contacto/turno
+  // quede sin resolver ("—") por un throttle transitorio. También reintenta 5xx.
+  const maxIntentos = 3;
+  for (let intento = 0; ; intento++) {
+    const res = await fetch(`${GHL_BASE}${path}`, {
+      headers: { Authorization: `Bearer ${pit}`, Version: version, "User-Agent": "curl/8.4.0" },
+    });
+    if (res.ok) return res.json();
+    const retriable = res.status === 429 || res.status >= 500;
+    if (!retriable || intento >= maxIntentos - 1)
+      throw new Error(`GHL ${res.status} en ${path}`);
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const esperaMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 400 * (intento + 1);
+    await new Promise((r) => setTimeout(r, esperaMs));
+  }
 }
 
 // Actualiza el estado de una cita en GHL (showed = asistió, noshow = ausente).
@@ -301,6 +311,9 @@ async function listCalendars(cfg: GhlSource): Promise<{ id: string; name: string
 export async function listRangeEvents(cfg: GhlSource, startMs: number, endMs: number) {
   const cals = await listCalendars(cfg);
   const calName = new Map(cals.map((c) => [c.id, c.name]));
+  // Un request de eventos por calendario (GHL no tiene "todos los eventos de la location").
+  // Concurrencia moderada: GHL rate-limitea (429) con ráfagas altas → más paralelismo
+  // termina siendo MÁS lento. 6 es el punto medido más estable.
   const perCal = await mapLimit(cals, 6, async (c) => {
     const data = await ghlFetch(
       cfg.pit,
@@ -332,11 +345,12 @@ async function listDayEvents(cfg: GhlSource, fecha: string) {
   return listRangeEvents(cfg, start, end);
 }
 
-// Nombre + teléfono + DNI de los contactos (dedup + paralelo).
+// Nombre + teléfono + DNI de los contactos (dedup + concurrencia acotada).
+// Sin límite, un día con muchos turnos dispara N GETs simultáneos a GHL → rate-limit
+// (429) y latencia. mapLimit(10) mantiene la carga rápida sin saturar la API.
 export async function resolveContactos(cfg: GhlSource, ids: string[]) {
   const unique = [...new Set(ids)];
-  const entries = await Promise.all(
-    unique.map(async (id) => {
+  const entries = await mapLimit(unique, 10, async (id) => {
       try {
         const data = await ghlFetch(cfg.pit, `/contacts/${id}`);
         const c = data.contact ?? {};
@@ -375,8 +389,7 @@ export async function resolveContactos(cfg: GhlSource, ids: string[]) {
           },
         ] as const;
       }
-    }),
-  );
+  });
   return new Map(entries);
 }
 
@@ -521,13 +534,16 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
 
     // Eventos de TODAS las subcuentas de la sucursal (CABA fusiona general + IOMA).
     // Cada source se resuelve con su propio PIT y sus custom fields; el turno queda
-    // marcado con la locationId de origen (para las mutaciones) y su badge.
-    const crudos: {
+    // marcado con la locationId de origen (para las mutaciones) y su badge. Las
+    // subcuentas se consultan EN SERIE a propósito: en paralelo se duplica la
+    // concurrencia contra GHL y salta el rate-limit (429), que sale más caro.
+    type Crudo = {
       source: GhlSource;
       e: Awaited<ReturnType<typeof listDayEvents>>[number];
       c: Awaited<ReturnType<typeof resolveContactos>> extends Map<string, infer V> ? V | undefined : never;
       agendadoPor: string;
-    }[] = [];
+    };
+    const crudos: Crudo[] = [];
     for (const source of sources) {
       const eventos = await listDayEvents(source, data.fecha);
       const [contactos, usuarios] = await Promise.all([
@@ -613,7 +629,9 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
         const finAt = finMap.get(e.eventId) ?? null;
         const retiroAt = retiroMap.get(e.eventId) ?? null;
         const llegadaOverride = llegadaOverrideMap.get(e.eventId) ?? null;
-        const llegadaFecha = llegadaOverride ?? (llegada ? llegada.createdAt : null);
+        // Prioridad: el check-in del tótem es la hora de llegada real; si no hubo, se usa
+        // la que estampó el marcado en recepción o la edición manual (llegadaOverride).
+        const llegadaFecha = (llegada ? llegada.createdAt : null) ?? llegadaOverride;
         const aCargoId = aCargoMap.get(e.eventId) ?? null;
         return {
           tipo: "ghl" as const,
@@ -769,9 +787,13 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
         );
       }
     }
-    // Hora de ingreso a sala / finalización: se estampan al marcar "En sala" (en_consultorio)
-    // y "Finalizado" respectivamente y no se pisan en marcas posteriores (coalesce mantiene la
-    // primera).
+    // Timestamps del flujo. Se estampan al marcar cada estado y NO se pisan después
+    // (coalesce mantiene el primero). La hora de LLEGADA se registra en cualquier estado
+    // de presencia (recepción / sala / finalizado / retiro): antes solo la dejaba el
+    // check-in del tótem, así que los turnos marcados a mano quedaban sin hora de llegada.
+    // "ausente" y "cancelado" no cuentan como llegada.
+    const PRESENCIA: string[] = ["en_recepcion", "en_consultorio", "finalizado", "se_retiro"];
+    const llegadaAhora = PRESENCIA.includes(data.estado) ? new Date() : null;
     const salaAhora = data.estado === "en_consultorio" ? new Date() : null;
     const finAhora = data.estado === "finalizado" ? new Date() : null;
     const retiroAhora = data.estado === "se_retiro" ? new Date() : null;
@@ -783,6 +805,7 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
         fecha: data.fecha,
         asistio: data.estado === "finalizado",
         estado: data.estado,
+        llegadaAt: llegadaAhora,
         salaAt: salaAhora,
         finalizadoAt: finAhora,
         retiroAt: retiroAhora,
@@ -793,6 +816,7 @@ export const marcarEstadoTurno = createServerFn({ method: "POST" })
         set: {
           asistio: data.estado === "finalizado",
           estado: data.estado,
+          llegadaAt: sql`coalesce(${turnoAsistencias.llegadaAt}, ${llegadaAhora ? llegadaAhora.toISOString() : null})`,
           salaAt: sql`coalesce(${turnoAsistencias.salaAt}, ${salaAhora ? salaAhora.toISOString() : null})`,
           finalizadoAt: sql`coalesce(${turnoAsistencias.finalizadoAt}, ${finAhora ? finAhora.toISOString() : null})`,
           retiroAt: sql`coalesce(${turnoAsistencias.retiroAt}, ${retiroAhora ? retiroAhora.toISOString() : null})`,
