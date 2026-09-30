@@ -143,9 +143,12 @@ function PrestacionesList() {
   const show = (key: string) => cols[key] !== false;
   const colCount = COLS.filter((c) => show(c.key)).length + 2; // + checkbox + acciones
 
-  // Scroll horizontal por botones.
+  // Scroll horizontal por botones. El elemento que realmente scrollea es el wrapper que agrega
+  // el componente <Table> de shadcn (div.overflow-auto que envuelve la <table>), no este div.
   const scrollRef = useRef<HTMLDivElement>(null);
-  const nudge = (dir: number) => scrollRef.current?.scrollBy({ left: dir * 400, behavior: "smooth" });
+  const getScroller = () =>
+    (scrollRef.current?.querySelector("table")?.parentElement as HTMLElement | null) ?? null;
+  const nudge = (dir: number) => getScroller()?.scrollBy({ left: dir * 400, behavior: "smooth" });
 
   const { data: obras = [] } = useQuery({
     queryKey: ["obras_sociales"],
@@ -438,7 +441,7 @@ function PrestacionesList() {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          <div ref={scrollRef} className="overflow-x-auto">
+          <div ref={scrollRef}>
             <Table>
               <TableHeader>
                 <TableRow>
