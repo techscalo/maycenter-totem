@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   listObrasSociales,
@@ -25,7 +25,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Pencil, Trash2, Plus, Search } from "lucide-react";
+import {
+  Pencil,
+  Trash2,
+  Plus,
+  Search,
+  Columns3,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -34,9 +42,38 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
 import { montoLinea, montoUsdLinea } from "@/lib/gestion/reportes";
 
 import { PermissionGate } from "@/components/gestion/PermissionGate";
+
+// Columnas configurables de la tabla (el checkbox de selección y las acciones son fijos).
+const COLS = [
+  { key: "fecha", label: "Fecha" },
+  { key: "paciente", label: "Paciente" },
+  { key: "dni", label: "DNI" },
+  { key: "sucursal", label: "Sucursal" },
+  { key: "obraSocial", label: "Obra social" },
+  { key: "piso", label: "Piso" },
+  { key: "odontologo", label: "Odontólogo" },
+  { key: "codigo", label: "Código" },
+  { key: "prestacion", label: "Prestación" },
+  { key: "observaciones", label: "Observaciones" },
+  { key: "cantidad", label: "Cant." },
+  { key: "monto", label: "Monto" },
+  { key: "usd", label: "USD" },
+] as const;
+const COLS_STORAGE = "prestaciones_cols_v1";
+function defaultCols(): Record<string, boolean> {
+  return Object.fromEntries(COLS.map((c) => [c.key, true]));
+}
 
 export const Route = createFileRoute("/_app/gestion/prestaciones/")({
   component: () => (
@@ -87,6 +124,28 @@ function PrestacionesList() {
   const [busqueda, setBusqueda] = useState("");
   const [editing, setEditing] = useState<Prestacion | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const [cols, setCols] = useState<Record<string, boolean>>(defaultCols);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(COLS_STORAGE);
+      if (saved) setCols({ ...defaultCols(), ...JSON.parse(saved) });
+    } catch {
+      /* noop */
+    }
+  }, []);
+  const toggleCol = (key: string) =>
+    setCols((c) => {
+      const next = { ...c, [key]: !c[key] };
+      localStorage.setItem(COLS_STORAGE, JSON.stringify(next));
+      return next;
+    });
+  const show = (key: string) => cols[key] !== false;
+  const colCount = COLS.filter((c) => show(c.key)).length + 2; // + checkbox + acciones
+
+  // Scroll horizontal por botones.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const nudge = (dir: number) => scrollRef.current?.scrollBy({ left: dir * 400, behavior: "smooth" });
 
   const { data: obras = [] } = useQuery({
     queryKey: ["obras_sociales"],
@@ -232,6 +291,27 @@ function PrestacionesList() {
               Eliminar seleccionadas ({selected.size})
             </Button>
           )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <Columns3 className="mr-2 h-4 w-4" /> Columnas
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Columnas visibles</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {COLS.map((c) => (
+                <DropdownMenuCheckboxItem
+                  key={c.key}
+                  checked={show(c.key)}
+                  onCheckedChange={() => toggleCol(c.key)}
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  {c.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button asChild>
             <Link to="/gestion/prestaciones/nueva">
               <Plus className="h-4 w-4 mr-2" />
@@ -334,96 +414,144 @@ function PrestacionesList() {
       </Card>
 
       <Card>
-        <CardContent className="p-0 overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-8">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 align-middle"
-                    checked={allVisibleSelected}
-                    onChange={toggleAllVisible}
-                    aria-label="Seleccionar todo"
-                  />
-                </TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Paciente</TableHead>
-                <TableHead>DNI</TableHead>
-                <TableHead>Sucursal</TableHead>
-                <TableHead>Obra social</TableHead>
-                <TableHead>Piso</TableHead>
-                <TableHead>Odontólogo</TableHead>
-                <TableHead>Código</TableHead>
-                <TableHead>Prestación</TableHead>
-                <TableHead className="text-right">Cant.</TableHead>
-                <TableHead className="text-right">Monto</TableHead>
-                <TableHead className="text-right">USD</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading && (
+        <CardContent className="p-0">
+          <div className="flex items-center gap-1 border-b px-2 py-1">
+            <span className="mr-auto text-xs text-muted-foreground">
+              Usá las flechas para desplazar la tabla si no entra en pantalla
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => nudge(-1)}
+              title="Desplazar a la izquierda"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => nudge(1)}
+              title="Desplazar a la derecha"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <div ref={scrollRef} className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">
-                    Cargando…
-                  </TableCell>
-                </TableRow>
-              )}
-              {!isLoading && filtered.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">
-                    Sin resultados.
-                  </TableCell>
-                </TableRow>
-              )}
-              {filtered.map((r) => (
-                <TableRow key={r.id} data-state={selected.has(r.id) ? "selected" : undefined}>
-                  <TableCell>
+                  <TableHead className="w-8">
                     <input
                       type="checkbox"
                       className="h-4 w-4 align-middle"
-                      checked={selected.has(r.id)}
-                      onChange={() => toggleSel(r.id)}
-                      aria-label="Seleccionar fila"
+                      checked={allVisibleSelected}
+                      onChange={toggleAllVisible}
+                      aria-label="Seleccionar todo"
                     />
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">{r.fecha}</TableCell>
-                  <TableCell className="font-medium">{r.paciente}</TableCell>
-                  <TableCell>{r.dni}</TableCell>
-                  <TableCell>{r.sucursales?.nombre}</TableCell>
-                  <TableCell>{r.obras_sociales?.nombre}</TableCell>
-                  <TableCell>{r.pisos?.nombre}</TableCell>
-                  <TableCell>{r.odontologos?.nombre}</TableCell>
-                  <TableCell>{r.nomencladores?.codigo || r.codigo_manual}</TableCell>
-                  <TableCell className="max-w-[260px] truncate">
-                    {r.nomencladores?.descripcion || r.descripcion_manual}
-                  </TableCell>
-                  <TableCell className="text-right">{r.cantidad}</TableCell>
-                  <TableCell className="text-right">{fmtArs(Number(r.monto || 0))}</TableCell>
-                  <TableCell className="text-right">
-                    {r.monto_usd ? `U$D ${r.monto_usd}` : "—"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button size="icon" variant="ghost" onClick={() => setEditing(r)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => {
-                          if (confirm("¿Eliminar esta prestación?")) delMut.mutate(r.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
+                  </TableHead>
+                  {show("fecha") && <TableHead>Fecha</TableHead>}
+                  {show("paciente") && <TableHead>Paciente</TableHead>}
+                  {show("dni") && <TableHead>DNI</TableHead>}
+                  {show("sucursal") && <TableHead>Sucursal</TableHead>}
+                  {show("obraSocial") && <TableHead>Obra social</TableHead>}
+                  {show("piso") && <TableHead>Piso</TableHead>}
+                  {show("odontologo") && <TableHead>Odontólogo</TableHead>}
+                  {show("codigo") && <TableHead>Código</TableHead>}
+                  {show("prestacion") && <TableHead>Prestación</TableHead>}
+                  {show("observaciones") && <TableHead>Observaciones</TableHead>}
+                  {show("cantidad") && <TableHead className="text-right">Cant.</TableHead>}
+                  {show("monto") && <TableHead className="text-right">Monto</TableHead>}
+                  {show("usd") && <TableHead className="text-right">USD</TableHead>}
+                  <TableHead></TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {isLoading && (
+                  <TableRow>
+                    <TableCell colSpan={colCount} className="text-center py-8 text-muted-foreground">
+                      Cargando…
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!isLoading && filtered.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={colCount} className="text-center py-8 text-muted-foreground">
+                      Sin resultados.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {filtered.map((r) => (
+                  <TableRow key={r.id} data-state={selected.has(r.id) ? "selected" : undefined}>
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 align-middle"
+                        checked={selected.has(r.id)}
+                        onChange={() => toggleSel(r.id)}
+                        aria-label="Seleccionar fila"
+                      />
+                    </TableCell>
+                    {show("fecha") && <TableCell className="whitespace-nowrap">{r.fecha}</TableCell>}
+                    {show("paciente") && <TableCell className="font-medium">{r.paciente}</TableCell>}
+                    {show("dni") && <TableCell>{r.dni}</TableCell>}
+                    {show("sucursal") && <TableCell>{r.sucursales?.nombre}</TableCell>}
+                    {show("obraSocial") && <TableCell>{r.obras_sociales?.nombre}</TableCell>}
+                    {show("piso") && <TableCell>{r.pisos?.nombre}</TableCell>}
+                    {show("odontologo") && <TableCell>{r.odontologos?.nombre}</TableCell>}
+                    {show("codigo") && (
+                      <TableCell>{r.nomencladores?.codigo || r.codigo_manual}</TableCell>
+                    )}
+                    {show("prestacion") && (
+                      <TableCell className="max-w-[260px] truncate">
+                        {r.nomencladores?.descripcion || r.descripcion_manual}
+                      </TableCell>
+                    )}
+                    {show("observaciones") && (
+                      <TableCell className="max-w-[240px] text-sm text-muted-foreground">
+                        {r.observaciones ? (
+                          <span
+                            className="whitespace-pre-wrap break-words"
+                            title={r.observaciones}
+                          >
+                            {r.observaciones}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
+                    )}
+                    {show("cantidad") && <TableCell className="text-right">{r.cantidad}</TableCell>}
+                    {show("monto") && (
+                      <TableCell className="text-right">{fmtArs(Number(r.monto || 0))}</TableCell>
+                    )}
+                    {show("usd") && (
+                      <TableCell className="text-right">
+                        {r.monto_usd ? `U$D ${r.monto_usd}` : "—"}
+                      </TableCell>
+                    )}
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => setEditing(r)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            if (confirm("¿Eliminar esta prestación?")) delMut.mutate(r.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
