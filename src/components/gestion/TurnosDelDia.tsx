@@ -15,6 +15,10 @@ import {
   setOdontologoACargoManual,
   setPisoTurno,
   setPisoManual,
+  setPrioridadTurno,
+  setPrioridadManual,
+  setNotasInternasTurno,
+  setNotasInternasManual,
   actualizarTurnoGhl,
   actualizarTurnoManual,
   cancelarTurnoGhl,
@@ -131,6 +135,14 @@ const ESTADOS = [
 ] as const;
 const ESTADO_MAP = Object.fromEntries(ESTADOS.map((e) => [e.value, e]));
 
+// Prioridad de atención asignada en recepción (ordena la lista: 1 primero).
+const PRIORIDADES = [
+  { value: 1, label: "Alta", dot: "bg-red-500" },
+  { value: 2, label: "Media", dot: "bg-amber-400" },
+  { value: 3, label: "Baja", dot: "bg-slate-400" },
+] as const;
+const PRIORIDAD_MAP = Object.fromEntries(PRIORIDADES.map((p) => [p.value, p]));
+
 // Columnas: orden de render + label + si arranca oculta.
 const COLS = [
   { key: "hora", label: "Hora turno" },
@@ -138,6 +150,7 @@ const COLS = [
   { key: "sala", label: "Hora ingreso a sala" },
   { key: "finalizado", label: "Hora finalización" },
   { key: "retiro", label: "Hora retiro", hiddenByDefault: true },
+  { key: "prioridad", label: "Prioridad" },
   { key: "paciente", label: "Paciente" },
   { key: "obraSocial", label: "Obra social" },
   { key: "telefono", label: "Teléfono" },
@@ -148,6 +161,7 @@ const COLS = [
   { key: "agendadoPor", label: "Agendado por", hiddenByDefault: true },
   { key: "descripcion", label: "Descripción", hiddenByDefault: true },
   { key: "observaciones", label: "Observaciones", hiddenByDefault: true },
+  { key: "notasInternas", label: "Notas internas" },
   { key: "tieneFicha", label: "Ficha" },
   { key: "estado", label: "Estado" },
   { key: "ficha", label: "Ficha GHL" },
@@ -411,6 +425,46 @@ export function TurnosDelDia() {
     onSettled: () => qc.invalidateQueries({ queryKey }),
   });
 
+  const cambiarPrioridad = useMutation({
+    mutationFn: (v: { row: any; prioridad: number | null }) =>
+      v.row.tipo === "manual"
+        ? setPrioridadManual({ data: { id: v.row.id, prioridad: v.prioridad } as any })
+        : setPrioridadTurno({
+            data: { eventId: v.row.eventId, sucursalId, fecha, prioridad: v.prioridad } as any,
+          }),
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey });
+      const prev = qc.getQueryData<any>(queryKey);
+      qc.setQueryData<any>(queryKey, (old: any) =>
+        old
+          ? {
+              ...old,
+              turnos: old.turnos.map((t: any) =>
+                t.rowId === v.row.rowId ? { ...t, prioridad: v.prioridad } : t,
+              ),
+            }
+          : old,
+      );
+      return { prev };
+    },
+    onError: (e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(queryKey, ctx.prev);
+      toast.error((e as Error).message || "No se pudo cambiar la prioridad");
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey }),
+  });
+
+  const cambiarNotas = useMutation({
+    mutationFn: (v: { row: any; notas: string | null }) =>
+      v.row.tipo === "manual"
+        ? setNotasInternasManual({ data: { id: v.row.id, notasInternas: v.notas } as any })
+        : setNotasInternasTurno({
+            data: { eventId: v.row.eventId, sucursalId, fecha, notasInternas: v.notas } as any,
+          }),
+    onSuccess: () => qc.invalidateQueries({ queryKey }),
+    onError: (e) => toast.error((e as Error).message || "No se pudieron guardar las notas"),
+  });
+
   // El "profesional" de un turno de GHL es el nombre del calendario (p. ej.
   // "Agenda Camilo Yepez - Blanqueamiento y carillas"); derivamos el odontólogo real
   // buscando cuál de los cargados aparece en ese nombre. En los manuales ya es el nombre.
@@ -464,8 +518,13 @@ export function TurnosDelDia() {
       );
     const dir = sort.dir === "asc" ? 1 : -1;
     const val = (t: any) => (sort.key === "profesional" ? t.profesional : t[sort.key]);
+    // La prioridad manda siempre: urgencias arriba (1=alta … 3=baja), sin prioridad al final;
+    // dentro de la misma prioridad respeta la columna elegida.
+    const prioRank = (t: any) => (t.prioridad == null ? 99 : t.prioridad);
     return [...list].sort(
-      (a, b) => String(val(a) ?? "").localeCompare(String(val(b) ?? ""), "es") * dir,
+      (a, b) =>
+        prioRank(a) - prioRank(b) ||
+        String(val(a) ?? "").localeCompare(String(val(b) ?? ""), "es") * dir,
     );
   }, [turnos, q, agendaFiltro, pisoFiltro, estadoFiltro, sort, odontologos]);
 
@@ -724,6 +783,7 @@ export function TurnosDelDia() {
                     {show("sala") && <TableHead className="w-24">Ingreso a sala</TableHead>}
                     {show("finalizado") && <TableHead className="w-24">Finalización</TableHead>}
                     {show("retiro") && <TableHead className="w-24">Retiro</TableHead>}
+                    {show("prioridad") && <TableHead className="w-32">Prioridad</TableHead>}
                     {show("paciente") && <SortHead k="paciente">Paciente</SortHead>}
                     {show("obraSocial") && <SortHead k="obraSocial">Obra social</SortHead>}
                     {show("telefono") && <TableHead>Teléfono</TableHead>}
@@ -736,6 +796,7 @@ export function TurnosDelDia() {
                     {show("agendadoPor") && <SortHead k="agendadoPor">Agendado por</SortHead>}
                     {show("descripcion") && <TableHead>Descripción</TableHead>}
                     {show("observaciones") && <TableHead>Observaciones</TableHead>}
+                    {show("notasInternas") && <TableHead className="w-56">Notas internas</TableHead>}
                     {show("tieneFicha") && <TableHead>Ficha</TableHead>}
                     {show("estado") && (
                       <SortHead k="estado" className="w-44">
@@ -802,6 +863,36 @@ export function TurnosDelDia() {
                         {show("retiro") && (
                           <TableCell className="tabular-nums text-sm">
                             {t.retiroHora ?? "—"}
+                          </TableCell>
+                        )}
+                        {show("prioridad") && (
+                          <TableCell>
+                            <Select
+                              value={t.prioridad != null ? String(t.prioridad) : NONE}
+                              onValueChange={(v) =>
+                                cambiarPrioridad.mutate({
+                                  row: t,
+                                  prioridad: v === NONE ? null : Number(v),
+                                })
+                              }
+                            >
+                              <SelectTrigger className="h-8 w-28">
+                                <SelectValue placeholder="—" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={NONE}>
+                                  <span className="text-muted-foreground">Sin prioridad</span>
+                                </SelectItem>
+                                {PRIORIDADES.map((p) => (
+                                  <SelectItem key={p.value} value={String(p.value)}>
+                                    <span className="inline-flex items-center gap-2">
+                                      <span className={cn("h-2.5 w-2.5 rounded-full", p.dot)} />
+                                      {p.value} · {p.label}
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </TableCell>
                         )}
                         {show("paciente") && (
@@ -929,6 +1020,21 @@ export function TurnosDelDia() {
                             ) : (
                               "—"
                             )}
+                          </TableCell>
+                        )}
+                        {show("notasInternas") && (
+                          <TableCell className="max-w-[240px]">
+                            <Input
+                              key={`notas-${t.rowId}-${t.notasInternas ?? ""}`}
+                              defaultValue={t.notasInternas ?? ""}
+                              placeholder="Firmó consentimiento, ya pagó…"
+                              className="h-8"
+                              onBlur={(e) => {
+                                const val = e.target.value.trim();
+                                if (val !== (t.notasInternas ?? "").trim())
+                                  cambiarNotas.mutate({ row: t, notas: val || null });
+                              }}
+                            />
                           </TableCell>
                         )}
                         {show("tieneFicha") && (
@@ -1127,6 +1233,7 @@ function NuevoTurnoDialog({
     odontologoId: NONE,
     pisoId: NONE,
     motivo: "",
+    estado: NONE,
   });
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -1184,6 +1291,7 @@ function NuevoTurnoDialog({
           odontologoId: form.odontologoId === NONE ? null : form.odontologoId,
           pisoId: form.pisoId === NONE ? null : form.pisoId,
           motivo: form.motivo.trim() || null,
+          estado: form.estado === NONE ? null : form.estado,
         } as any,
       }),
     onSuccess: () => {
@@ -1200,6 +1308,7 @@ function NuevoTurnoDialog({
         odontologoId: NONE,
         pisoId: NONE,
         motivo: "",
+        estado: NONE,
       });
       onCreated();
     },
@@ -1314,6 +1423,25 @@ function NuevoTurnoDialog({
                 {(pisos ?? []).map((p: any) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Estado</Label>
+            <Select value={form.estado} onValueChange={(v) => set("estado", v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sin marcar" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Sin marcar</SelectItem>
+                {ESTADOS.filter((e) => e.value !== "ausente" && e.value !== "cancelado").map((e) => (
+                  <SelectItem key={e.value} value={e.value}>
+                    <span className="inline-flex items-center gap-2">
+                      <span className={cn("h-2.5 w-2.5 rounded-full", e.dot)} />
+                      {e.label}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>

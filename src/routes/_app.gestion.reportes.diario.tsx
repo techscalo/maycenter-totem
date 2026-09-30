@@ -382,6 +382,7 @@ function GrupoOdontologo({
                 <TableHead>Obra social</TableHead>
                 <TableHead>Código</TableHead>
                 <TableHead>Descripción</TableHead>
+                <TableHead>Observaciones</TableHead>
                 <TableHead className="text-right">Cant.</TableHead>
                 <TableHead className="text-right">Unit.</TableHead>
                 <TableHead className="text-right">Total</TableHead>
@@ -405,6 +406,15 @@ function GrupoOdontologo({
                       <span className="ml-1 text-[10px] uppercase tracking-wide text-amber-600">
                         · no facturable
                       </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground max-w-[220px]">
+                    {r.observaciones ? (
+                      <span className="whitespace-pre-wrap break-words" title={r.observaciones}>
+                        {r.observaciones}
+                      </span>
+                    ) : (
+                      "—"
                     )}
                   </TableCell>
                   <TableCell className="text-right">{r.cantidad}</TableCell>

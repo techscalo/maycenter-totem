@@ -454,6 +454,8 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
       odontologoACargoId: turnosManuales.odontologoACargoId,
       odontologoACargo: odontCargo.nombre,
       pisoId: turnosManuales.pisoId,
+      prioridad: turnosManuales.prioridad,
+      notasInternas: turnosManuales.notasInternas,
     })
     .from(turnosManuales)
     .leftJoin(obrasSociales, eq(turnosManuales.obraSocialId, obrasSociales.id))
@@ -501,6 +503,8 @@ async function cargarTurnosManuales(sucursalId: string, fecha: string) {
     odontologoACargoId: m.odontologoACargoId as string | null,
     odontologoACargo: m.odontologoACargo as string | null,
     pisoId: m.pisoId as string | null,
+    prioridad: (m.prioridad ?? null) as number | null,
+    notasInternas: (m.notasInternas ?? null) as string | null,
     contactoUrl: null as string | null,
     estado: m.estado,
     };
@@ -614,6 +618,8 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
             cancelMotivo: turnoAsistencias.cancelMotivo,
             odontologoACargoId: turnoAsistencias.odontologoACargoId,
             pisoId: turnoAsistencias.pisoId,
+            prioridad: turnoAsistencias.prioridad,
+            notasInternas: turnoAsistencias.notasInternas,
           })
           .from(turnoAsistencias)
           .where(inArray(turnoAsistencias.ghlEventId, ids))
@@ -626,6 +632,8 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
     const llegadaOverrideMap = new Map(marcadas.map((m) => [m.eventId, m.llegadaAt]));
     const aCargoMap = new Map(marcadas.map((m) => [m.eventId, m.odontologoACargoId]));
     const pisoMap = new Map(marcadas.map((m) => [m.eventId, m.pisoId]));
+    const prioridadMap = new Map(marcadas.map((m) => [m.eventId, m.prioridad]));
+    const notasMap = new Map(marcadas.map((m) => [m.eventId, m.notasInternas]));
 
     // Nombres de odontólogos de la sucursal (para resolver el "a cargo" por id).
     const odontRows = await db
@@ -707,13 +715,17 @@ export const getTurnosDelDia = createServerFn({ method: "GET" })
           odontologoACargoId: aCargoId,
           odontologoACargo: aCargoId ? (odontNombre.get(aCargoId) ?? null) : null,
           pisoId: pisoMap.get(e.eventId) ?? null,
+          prioridad: prioridadMap.get(e.eventId) ?? null,
+          notasInternas: notasMap.get(e.eventId) ?? null,
           contactoUrl: `https://app.gohighlevel.com/v2/location/${locationId}/contacts/detail/${e.contactId}`,
           estado,
         };
       });
 
-    const turnos = [...turnosGhl, ...manuales].sort((a, b) =>
-      a.startTime.localeCompare(b.startTime),
+    // Orden base: prioridad (1=alta … 3=baja, sin prioridad al final) y luego por hora.
+    const prioRank = (t: { prioridad: number | null }) => t.prioridad ?? 99;
+    const turnos = [...turnosGhl, ...manuales].sort(
+      (a, b) => prioRank(a) - prioRank(b) || a.startTime.localeCompare(b.startTime),
     );
 
     return { soportado: true as const, turnos };
@@ -1072,6 +1084,123 @@ export const setPisoManual = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Prioridad de atención de un turno de GHL (editable inline en la tabla). 1=alta, 2=media,
+// 3=baja, null=sin prioridad. Ordena la lista para que recepción atienda por urgencia.
+export const setPrioridadTurno = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        eventId: z.string().min(1),
+        sucursalId: z.string().uuid(),
+        fecha: z.string(),
+        prioridad: z.number().int().min(1).max(3).nullable(),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    if (!ctx.sucursalIds.includes(data.sucursalId)) {
+      throw new Error("No tenés acceso a esa sucursal");
+    }
+    await db
+      .insert(turnoAsistencias)
+      .values({
+        ghlEventId: data.eventId,
+        sucursalId: data.sucursalId,
+        fecha: data.fecha,
+        prioridad: data.prioridad,
+        marcadoPor: ctx.userId,
+      })
+      .onConflictDoUpdate({
+        target: turnoAsistencias.ghlEventId,
+        set: { prioridad: data.prioridad, updatedAt: new Date() },
+      });
+    return { ok: true };
+  });
+
+// Prioridad de atención de un turno manual (editable inline en la tabla).
+export const setPrioridadManual = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({ id: z.string().uuid(), prioridad: z.number().int().min(1).max(3).nullable() })
+      .parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    const [t] = await db
+      .select({ sucursalId: turnosManuales.sucursalId })
+      .from(turnosManuales)
+      .where(eq(turnosManuales.id, data.id))
+      .limit(1);
+    if (!t) throw new Error("Turno no encontrado");
+    if (!ctx.sucursalIds.includes(t.sucursalId)) {
+      throw new Error("No tenés acceso a esa sucursal");
+    }
+    await db
+      .update(turnosManuales)
+      .set({ prioridad: data.prioridad, marcadoPor: ctx.userId, updatedAt: new Date() })
+      .where(eq(turnosManuales.id, data.id));
+    return { ok: true };
+  });
+
+// Notas internas de recepción de un turno de GHL (editable inline / en el modal). Propias del
+// sistema: NO se escriben en GHL ni tocan descripción/observaciones del contacto.
+export const setNotasInternasTurno = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        eventId: z.string().min(1),
+        sucursalId: z.string().uuid(),
+        fecha: z.string(),
+        notasInternas: z.string().nullable(),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    if (!ctx.sucursalIds.includes(data.sucursalId)) {
+      throw new Error("No tenés acceso a esa sucursal");
+    }
+    const valor = data.notasInternas?.trim() || null;
+    await db
+      .insert(turnoAsistencias)
+      .values({
+        ghlEventId: data.eventId,
+        sucursalId: data.sucursalId,
+        fecha: data.fecha,
+        notasInternas: valor,
+        marcadoPor: ctx.userId,
+      })
+      .onConflictDoUpdate({
+        target: turnoAsistencias.ghlEventId,
+        set: { notasInternas: valor, updatedAt: new Date() },
+      });
+    return { ok: true };
+  });
+
+// Notas internas de recepción de un turno manual.
+export const setNotasInternasManual = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z.object({ id: z.string().uuid(), notasInternas: z.string().nullable() }).parse(i),
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth();
+    const [t] = await db
+      .select({ sucursalId: turnosManuales.sucursalId })
+      .from(turnosManuales)
+      .where(eq(turnosManuales.id, data.id))
+      .limit(1);
+    if (!t) throw new Error("Turno no encontrado");
+    if (!ctx.sucursalIds.includes(t.sucursalId)) {
+      throw new Error("No tenés acceso a esa sucursal");
+    }
+    await db
+      .update(turnosManuales)
+      .set({ notasInternas: data.notasInternas?.trim() || null, marcadoPor: ctx.userId, updatedAt: new Date() })
+      .where(eq(turnosManuales.id, data.id));
+    return { ok: true };
+  });
+
 // Edición completa de un turno de GHL desde el modal: datos del contacto + custom fields,
 // reprogramación de la cita (start/end en GHL) y campos locales (estado, a cargo, horas).
 export const actualizarTurnoGhl = createServerFn({ method: "POST" })
@@ -1272,6 +1401,9 @@ export const crearTurnoManual = createServerFn({ method: "POST" })
         odontologoId: z.string().uuid().optional().nullable(),
         pisoId: z.string().uuid().optional().nullable(),
         motivo: z.string().trim().optional().nullable(),
+        // Estado inicial de la cita, opcional: permite marcar "En sala" (u otro) al agendar
+        // desde el modal, sin tener que reabrir el turno después.
+        estado: z.enum(ESTADO_TURNO).optional().nullable(),
       })
       .parse(i),
   )
@@ -1280,6 +1412,10 @@ export const crearTurnoManual = createServerFn({ method: "POST" })
     if (!ctx.sucursalIds.includes(data.sucursalId)) {
       throw new Error("No tenés acceso a esa sucursal");
     }
+    // El manual se carga con el paciente presente: se estampa la llegada al crear. Si además
+    // se eligió un estado, se estampan sala/finalización/retiro según corresponda (una vez).
+    const ahora = new Date();
+    const est = data.estado || null;
     const [row] = await db
       .insert(turnosManuales)
       .values({
@@ -1293,8 +1429,11 @@ export const crearTurnoManual = createServerFn({ method: "POST" })
         odontologoId: data.odontologoId || null,
         pisoId: data.pisoId || null,
         motivo: data.motivo?.trim() || null,
-        // El manual se carga con el paciente presente: se estampa la llegada al crear.
-        llegadaAt: new Date(),
+        estado: est,
+        llegadaAt: ahora,
+        salaAt: est === "en_consultorio" ? ahora : null,
+        finalizadoAt: est === "finalizado" ? ahora : null,
+        retiroAt: est === "se_retiro" ? ahora : null,
         marcadoPor: ctx.userId,
         createdBy: ctx.userId,
       })

@@ -318,6 +318,12 @@ export const turnoAsistencias = pgTable("turno_asistencias", {
   }),
   // Override de piso (cuando no corresponde con el del odontólogo). null = piso del odontólogo.
   pisoId: uuid("piso_id").references(() => pisos.id, { onDelete: "set null" }),
+  // Prioridad de atención asignada en recepción: 1 = alta, 2 = media, 3 = baja (null = sin prioridad).
+  // Ordena la lista de "Turnos del día" para que recepción acomode a criterio (urgencias primero).
+  prioridad: integer("prioridad"),
+  // Notas internas de recepción (firmó consentimiento, ya pagó…). Propias del sistema, NO se
+  // escriben en GHL ni pisan descripción/observaciones del contacto.
+  notasInternas: text("notas_internas"),
   marcadoPor: text("marcado_por"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -353,6 +359,10 @@ export const turnosManuales = pgTable(
     }),
     // Override de piso (cuando no corresponde con el del odontólogo). null = piso del odontólogo.
     pisoId: uuid("piso_id").references(() => pisos.id, { onDelete: "set null" }),
+    // Prioridad de atención asignada en recepción: 1 = alta, 2 = media, 3 = baja (null = sin prioridad).
+    prioridad: integer("prioridad"),
+    // Notas internas de recepción (firmó consentimiento, ya pagó…). Propias del sistema.
+    notasInternas: text("notas_internas"),
     motivo: text("motivo"),
     estado: text("estado"),
     // Ingreso a la clínica y a la sala. Como el manual no pasa por el tótem, se estampan
