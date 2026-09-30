@@ -1404,6 +1404,8 @@ export const crearTurnoManual = createServerFn({ method: "POST" })
         // Estado inicial de la cita, opcional: permite marcar "En sala" (u otro) al agendar
         // desde el modal, sin tener que reabrir el turno después.
         estado: z.enum(ESTADO_TURNO).optional().nullable(),
+        // Prioridad de atención opcional al agendar (1=alta, 2=media, 3=baja).
+        prioridad: z.number().int().min(1).max(3).optional().nullable(),
       })
       .parse(i),
   )
@@ -1430,6 +1432,7 @@ export const crearTurnoManual = createServerFn({ method: "POST" })
         pisoId: data.pisoId || null,
         motivo: data.motivo?.trim() || null,
         estado: est,
+        prioridad: data.prioridad ?? null,
         llegadaAt: ahora,
         salaAt: est === "en_consultorio" ? ahora : null,
         finalizadoAt: est === "finalizado" ? ahora : null,

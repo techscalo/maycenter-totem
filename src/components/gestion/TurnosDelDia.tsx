@@ -1234,6 +1234,7 @@ function NuevoTurnoDialog({
     pisoId: NONE,
     motivo: "",
     estado: NONE,
+    prioridad: NONE,
   });
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -1292,6 +1293,7 @@ function NuevoTurnoDialog({
           pisoId: form.pisoId === NONE ? null : form.pisoId,
           motivo: form.motivo.trim() || null,
           estado: form.estado === NONE ? null : form.estado,
+          prioridad: form.prioridad === NONE ? null : Number(form.prioridad),
         } as any,
       }),
     onSuccess: () => {
@@ -1309,6 +1311,7 @@ function NuevoTurnoDialog({
         pisoId: NONE,
         motivo: "",
         estado: NONE,
+        prioridad: NONE,
       });
       onCreated();
     },
@@ -1441,6 +1444,25 @@ function NuevoTurnoDialog({
                     <span className="inline-flex items-center gap-2">
                       <span className={cn("h-2.5 w-2.5 rounded-full", e.dot)} />
                       {e.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Prioridad</Label>
+            <Select value={form.prioridad} onValueChange={(v) => set("prioridad", v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sin prioridad" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Sin prioridad</SelectItem>
+                {PRIORIDADES.map((p) => (
+                  <SelectItem key={p.value} value={String(p.value)}>
+                    <span className="inline-flex items-center gap-2">
+                      <span className={cn("h-2.5 w-2.5 rounded-full", p.dot)} />
+                      {p.value} · {p.label}
                     </span>
                   </SelectItem>
                 ))}
