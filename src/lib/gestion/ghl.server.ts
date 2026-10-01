@@ -77,13 +77,14 @@ const GHL_BY_SLUG: Record<string, SourceDef[]> = {
     {
       // IOMA CABA: subcuenta separada, misma recepción física. DNI (creado 21/09/2026,
       // igual que CABA → cruza con el check-in del tótem) + Obra Social + "Asistio al
-      // turno" (estado de cita). No tiene Observaciones ni Ficha.
+      // turno" (estado de cita) + Ficha (creado 01/10/2026, opciones igualadas a CABA).
+      // No tiene Observaciones.
       locEnv: "GHL_IOMA_LOCATION_ID",
       pitEnv: "GHL_IOMA_PIT",
       dniField: "H1eh832d3XHWwQtzwmrH",
       osField: "DOmSLDrchwLP8zA0OMKr",
       obsField: null,
-      fichaField: null,
+      fichaField: "c2H3FnBOuibySNcrWewT",
       estadoCitaField: "OjqTwu3PvlbJq4AB8TOm",
       badge: "IOMA",
     },
