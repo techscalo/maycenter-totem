@@ -9,32 +9,32 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/_app'
 import { Route as GestionLoginRouteImport } from './routes/gestion.login'
 import { Route as AppGestionIndexRouteImport } from './routes/_app.gestion.index'
-import { Route as ApiAuthSplatRouteImport } from './routes/api.auth.$'
-import { Route as AppGestionRegistroRouteImport } from './routes/_app.gestion.registro'
-import { Route as AppGestionRecepcionRouteImport } from './routes/_app.gestion.recepcion'
-import { Route as AppGestionPreciosRouteImport } from './routes/_app.gestion.precios'
-import { Route as AppGestionOdontologosRouteImport } from './routes/_app.gestion.odontologos'
-import { Route as AppGestionDashboardRouteImport } from './routes/_app.gestion.dashboard'
-import { Route as AppGestionAyudaRouteImport } from './routes/_app.gestion.ayuda'
 import { Route as AppGestionAdminRouteImport } from './routes/_app.gestion.admin'
-import { Route as AppGestionPrestacionesIndexRouteImport } from './routes/_app.gestion.prestaciones.index'
+import { Route as AppGestionAyudaRouteImport } from './routes/_app.gestion.ayuda'
+import { Route as AppGestionDashboardRouteImport } from './routes/_app.gestion.dashboard'
+import { Route as AppGestionOdontologosRouteImport } from './routes/_app.gestion.odontologos'
+import { Route as AppGestionPreciosRouteImport } from './routes/_app.gestion.precios'
+import { Route as AppGestionRecepcionRouteImport } from './routes/_app.gestion.recepcion'
+import { Route as AppGestionRegistroRouteImport } from './routes/_app.gestion.registro'
+import { Route as ApiAuthSplatRouteImport } from './routes/api.auth.$'
 import { Route as AppGestionPacientesIndexRouteImport } from './routes/_app.gestion.pacientes.index'
-import { Route as AppGestionReportesIomaRouteImport } from './routes/_app.gestion.reportes.ioma'
-import { Route as AppGestionReportesDiarioRouteImport } from './routes/_app.gestion.reportes.diario'
-import { Route as AppGestionPrestacionesNuevaRouteImport } from './routes/_app.gestion.prestaciones.nueva'
 import { Route as AppGestionPacientesDniRouteImport } from './routes/_app.gestion.pacientes.$dni'
+import { Route as AppGestionPrestacionesIndexRouteImport } from './routes/_app.gestion.prestaciones.index'
+import { Route as AppGestionPrestacionesNuevaRouteImport } from './routes/_app.gestion.prestaciones.nueva'
+import { Route as AppGestionReportesDiarioRouteImport } from './routes/_app.gestion.reportes.diario'
+import { Route as AppGestionReportesIomaRouteImport } from './routes/_app.gestion.reportes.ioma'
 
-const AppRoute = AppRouteImport.update({
-  id: '/_app',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GestionLoginRoute = GestionLoginRouteImport.update({
@@ -47,34 +47,9 @@ const AppGestionIndexRoute = AppGestionIndexRouteImport.update({
   path: '/gestion/',
   getParentRoute: () => AppRoute,
 } as any)
-const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
-  id: '/api/auth/$',
-  path: '/api/auth/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AppGestionRegistroRoute = AppGestionRegistroRouteImport.update({
-  id: '/gestion/registro',
-  path: '/gestion/registro',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppGestionRecepcionRoute = AppGestionRecepcionRouteImport.update({
-  id: '/gestion/recepcion',
-  path: '/gestion/recepcion',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppGestionPreciosRoute = AppGestionPreciosRouteImport.update({
-  id: '/gestion/precios',
-  path: '/gestion/precios',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppGestionOdontologosRoute = AppGestionOdontologosRouteImport.update({
-  id: '/gestion/odontologos',
-  path: '/gestion/odontologos',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppGestionDashboardRoute = AppGestionDashboardRouteImport.update({
-  id: '/gestion/dashboard',
-  path: '/gestion/dashboard',
+const AppGestionAdminRoute = AppGestionAdminRouteImport.update({
+  id: '/gestion/admin',
+  path: '/gestion/admin',
   getParentRoute: () => AppRoute,
 } as any)
 const AppGestionAyudaRoute = AppGestionAyudaRouteImport.update({
@@ -82,9 +57,45 @@ const AppGestionAyudaRoute = AppGestionAyudaRouteImport.update({
   path: '/gestion/ayuda',
   getParentRoute: () => AppRoute,
 } as any)
-const AppGestionAdminRoute = AppGestionAdminRouteImport.update({
-  id: '/gestion/admin',
-  path: '/gestion/admin',
+const AppGestionDashboardRoute = AppGestionDashboardRouteImport.update({
+  id: '/gestion/dashboard',
+  path: '/gestion/dashboard',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGestionOdontologosRoute = AppGestionOdontologosRouteImport.update({
+  id: '/gestion/odontologos',
+  path: '/gestion/odontologos',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGestionPreciosRoute = AppGestionPreciosRouteImport.update({
+  id: '/gestion/precios',
+  path: '/gestion/precios',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGestionRecepcionRoute = AppGestionRecepcionRouteImport.update({
+  id: '/gestion/recepcion',
+  path: '/gestion/recepcion',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGestionRegistroRoute = AppGestionRegistroRouteImport.update({
+  id: '/gestion/registro',
+  path: '/gestion/registro',
+  getParentRoute: () => AppRoute,
+} as any)
+const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
+  id: '/api/auth/$',
+  path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppGestionPacientesIndexRoute =
+  AppGestionPacientesIndexRouteImport.update({
+    id: '/gestion/pacientes/',
+    path: '/gestion/pacientes/',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppGestionPacientesDniRoute = AppGestionPacientesDniRouteImport.update({
+  id: '/gestion/pacientes/$dni',
+  path: '/gestion/pacientes/$dni',
   getParentRoute: () => AppRoute,
 } as any)
 const AppGestionPrestacionesIndexRoute =
@@ -93,32 +104,21 @@ const AppGestionPrestacionesIndexRoute =
     path: '/gestion/prestaciones/',
     getParentRoute: () => AppRoute,
   } as any)
-const AppGestionPacientesIndexRoute =
-  AppGestionPacientesIndexRouteImport.update({
-    id: '/gestion/pacientes/',
-    path: '/gestion/pacientes/',
-    getParentRoute: () => AppRoute,
-  } as any)
-const AppGestionReportesIomaRoute = AppGestionReportesIomaRouteImport.update({
-  id: '/gestion/reportes/ioma',
-  path: '/gestion/reportes/ioma',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppGestionReportesDiarioRoute =
-  AppGestionReportesDiarioRouteImport.update({
-    id: '/gestion/reportes/diario',
-    path: '/gestion/reportes/diario',
-    getParentRoute: () => AppRoute,
-  } as any)
 const AppGestionPrestacionesNuevaRoute =
   AppGestionPrestacionesNuevaRouteImport.update({
     id: '/gestion/prestaciones/nueva',
     path: '/gestion/prestaciones/nueva',
     getParentRoute: () => AppRoute,
   } as any)
-const AppGestionPacientesDniRoute = AppGestionPacientesDniRouteImport.update({
-  id: '/gestion/pacientes/$dni',
-  path: '/gestion/pacientes/$dni',
+const AppGestionReportesDiarioRoute =
+  AppGestionReportesDiarioRouteImport.update({
+    id: '/gestion/reportes/diario',
+    path: '/gestion/reportes/diario',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppGestionReportesIomaRoute = AppGestionReportesIomaRouteImport.update({
+  id: '/gestion/reportes/ioma',
+  path: '/gestion/reportes/ioma',
   getParentRoute: () => AppRoute,
 } as any)
 
@@ -251,18 +251,18 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/_app': {
-      id: '/_app'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof AppRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/gestion/login': {
@@ -279,46 +279,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGestionIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/api/auth/$': {
-      id: '/api/auth/$'
-      path: '/api/auth/$'
-      fullPath: '/api/auth/$'
-      preLoaderRoute: typeof ApiAuthSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_app/gestion/registro': {
-      id: '/_app/gestion/registro'
-      path: '/gestion/registro'
-      fullPath: '/gestion/registro'
-      preLoaderRoute: typeof AppGestionRegistroRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/gestion/recepcion': {
-      id: '/_app/gestion/recepcion'
-      path: '/gestion/recepcion'
-      fullPath: '/gestion/recepcion'
-      preLoaderRoute: typeof AppGestionRecepcionRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/gestion/precios': {
-      id: '/_app/gestion/precios'
-      path: '/gestion/precios'
-      fullPath: '/gestion/precios'
-      preLoaderRoute: typeof AppGestionPreciosRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/gestion/odontologos': {
-      id: '/_app/gestion/odontologos'
-      path: '/gestion/odontologos'
-      fullPath: '/gestion/odontologos'
-      preLoaderRoute: typeof AppGestionOdontologosRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/gestion/dashboard': {
-      id: '/_app/gestion/dashboard'
-      path: '/gestion/dashboard'
-      fullPath: '/gestion/dashboard'
-      preLoaderRoute: typeof AppGestionDashboardRouteImport
+    '/_app/gestion/admin': {
+      id: '/_app/gestion/admin'
+      path: '/gestion/admin'
+      fullPath: '/gestion/admin'
+      preLoaderRoute: typeof AppGestionAdminRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/gestion/ayuda': {
@@ -328,11 +293,60 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGestionAyudaRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/gestion/admin': {
-      id: '/_app/gestion/admin'
-      path: '/gestion/admin'
-      fullPath: '/gestion/admin'
-      preLoaderRoute: typeof AppGestionAdminRouteImport
+    '/_app/gestion/dashboard': {
+      id: '/_app/gestion/dashboard'
+      path: '/gestion/dashboard'
+      fullPath: '/gestion/dashboard'
+      preLoaderRoute: typeof AppGestionDashboardRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/gestion/odontologos': {
+      id: '/_app/gestion/odontologos'
+      path: '/gestion/odontologos'
+      fullPath: '/gestion/odontologos'
+      preLoaderRoute: typeof AppGestionOdontologosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/gestion/precios': {
+      id: '/_app/gestion/precios'
+      path: '/gestion/precios'
+      fullPath: '/gestion/precios'
+      preLoaderRoute: typeof AppGestionPreciosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/gestion/recepcion': {
+      id: '/_app/gestion/recepcion'
+      path: '/gestion/recepcion'
+      fullPath: '/gestion/recepcion'
+      preLoaderRoute: typeof AppGestionRecepcionRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/gestion/registro': {
+      id: '/_app/gestion/registro'
+      path: '/gestion/registro'
+      fullPath: '/gestion/registro'
+      preLoaderRoute: typeof AppGestionRegistroRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/api/auth/$': {
+      id: '/api/auth/$'
+      path: '/api/auth/$'
+      fullPath: '/api/auth/$'
+      preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/gestion/pacientes/': {
+      id: '/_app/gestion/pacientes/'
+      path: '/gestion/pacientes'
+      fullPath: '/gestion/pacientes/'
+      preLoaderRoute: typeof AppGestionPacientesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/gestion/pacientes/$dni': {
+      id: '/_app/gestion/pacientes/$dni'
+      path: '/gestion/pacientes/$dni'
+      fullPath: '/gestion/pacientes/$dni'
+      preLoaderRoute: typeof AppGestionPacientesDniRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/gestion/prestaciones/': {
@@ -342,18 +356,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGestionPrestacionesIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/gestion/pacientes/': {
-      id: '/_app/gestion/pacientes/'
-      path: '/gestion/pacientes'
-      fullPath: '/gestion/pacientes/'
-      preLoaderRoute: typeof AppGestionPacientesIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/gestion/reportes/ioma': {
-      id: '/_app/gestion/reportes/ioma'
-      path: '/gestion/reportes/ioma'
-      fullPath: '/gestion/reportes/ioma'
-      preLoaderRoute: typeof AppGestionReportesIomaRouteImport
+    '/_app/gestion/prestaciones/nueva': {
+      id: '/_app/gestion/prestaciones/nueva'
+      path: '/gestion/prestaciones/nueva'
+      fullPath: '/gestion/prestaciones/nueva'
+      preLoaderRoute: typeof AppGestionPrestacionesNuevaRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/gestion/reportes/diario': {
@@ -363,18 +370,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGestionReportesDiarioRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/gestion/prestaciones/nueva': {
-      id: '/_app/gestion/prestaciones/nueva'
-      path: '/gestion/prestaciones/nueva'
-      fullPath: '/gestion/prestaciones/nueva'
-      preLoaderRoute: typeof AppGestionPrestacionesNuevaRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/gestion/pacientes/$dni': {
-      id: '/_app/gestion/pacientes/$dni'
-      path: '/gestion/pacientes/$dni'
-      fullPath: '/gestion/pacientes/$dni'
-      preLoaderRoute: typeof AppGestionPacientesDniRouteImport
+    '/_app/gestion/reportes/ioma': {
+      id: '/_app/gestion/reportes/ioma'
+      path: '/gestion/reportes/ioma'
+      fullPath: '/gestion/reportes/ioma'
+      preLoaderRoute: typeof AppGestionReportesIomaRouteImport
       parentRoute: typeof AppRoute
     }
   }
